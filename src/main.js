@@ -23,7 +23,7 @@ async function init() {
   setupFocusInteraction({ scene, camera, renderer }); // ← add here
 
   resizeHandler(camera, renderer);
-  loadGLBFromURL('./circ_color.glb', scene, () => {
+  loadGLBFromURL('/circ_color.glb', scene, () => {
     console.log('circ_color.glb loaded successfully');
   });
   animate(scene, camera, renderer);
