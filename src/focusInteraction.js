@@ -32,10 +32,16 @@ let focusMode = false;
 let focused = null;
 let ring = [];
 const SAVED = new WeakMap();
+let ringCenter = new THREE.Vector3();
+let ringAngle = 0;
+let lastTime = 0;
+
+const RING_SPEED = 0.4; // radians per second (tweak)
+
 
 const RELATED_MAX = 8;
 const FOCUS_DISTANCE = 7;
-const RING_RADIUS = 4.5;
+const RING_RADIUS = 3.5;
 const DIM_ALPHA = 0.25;
 
 function saveOriginal(mesh) {
@@ -60,25 +66,45 @@ function restoreOriginal(mesh) {
 }
 
 function isRelated(aRecord, bRecord) {
-  const a = Object.keys(aRecord.people || {});
-  const b = Object.keys(bRecord.people || {});
-  if (a.length === 0 || b.length === 0) return false;
+  // People might already be an array (from the loader) or still be an object.
+  const a = Array.isArray(aRecord?.people)
+    ? aRecord.people
+    : Object.keys(aRecord?.people || {});
+  const b = Array.isArray(bRecord?.people)
+    ? bRecord.people
+    : Object.keys(bRecord?.people || {});
+
+  if (!a.length || !b.length) return false;
+
   const setA = new Set(a);
-  return b.some(p => setA.has(p));
+  return b.some(p => setA.has(p));  // overlap = related
 }
 
-function layoutRing(centerPos, count) {
-  const out = [];
-  for (let i = 0; i < count; i++) {
-    const t = (i / count) * Math.PI * 2;
-    out.push(new THREE.Vector3(
-      centerPos.x + Math.cos(t) * RING_RADIUS,
-      centerPos.y,
-      centerPos.z + Math.sin(t) * RING_RADIUS
-    ));
-  }
-  return out;
+function getCameraBasis() {
+  const viewDir = new THREE.Vector3();
+  camera.getWorldDirection(viewDir);
+  const up = camera.up.clone().normalize();
+  const right = new THREE.Vector3().crossVectors(up, viewDir).normalize();
+  return { right, up, viewDir };
 }
+
+function placeRing(angleOffset) {
+  const { right, up, viewDir } = getCameraBasis();
+
+  ring.forEach(o => {
+    const a = o.baseAngle + angleOffset;
+    const pos = ringCenter.clone()
+      .addScaledVector(right, Math.cos(a) * RING_RADIUS)
+      .addScaledVector(up,    Math.sin(a) * RING_RADIUS)
+      .addScaledVector(viewDir, -0.05); // tiny nudge toward camera
+
+    o.mesh.position.copy(pos);
+    o.mesh.lookAt(camera.position);
+    o.mesh.renderOrder = 8;
+  });
+}
+
+
 
 function moveInFrontOfCamera(mesh) {
   const dir = new THREE.Vector3();
@@ -137,22 +163,25 @@ function focusImage(picked) {
     .filter(o => o.mesh !== picked.mesh && isRelated(picked.record, o.record))
     .slice(0, RELATED_MAX);
 
+  // center in front of camera (updated each frame too)
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
-  const centerPos = camera.position.clone().add(dir.multiplyScalar(FOCUS_DISTANCE));
-  const targets = layoutRing(centerPos, Math.max(related.length, 1));
+  ringCenter.copy(camera.position).add(dir.multiplyScalar(FOCUS_DISTANCE));
 
-  ring = related;
-  related.forEach((o, i) => {
+  ring = related.map((o, i) => {
     saveOriginal(o.mesh);
-    tween(o.mesh.position, { x: targets[i].x, y: targets[i].y, z: targets[i].z });
-    o.mesh.lookAt(camera.position);
-    o.mesh.renderOrder = 8;
+    // assign evenly spaced base angles
+    o.baseAngle = (i / Math.max(related.length, 1)) * Math.PI * 2;
+    return o;
   });
+
+  // place once immediately (no motion yet)
+  placeRing(0);
 
   const keep = new Set([picked.mesh, ...related.map(r => r.mesh)]);
   dimAllExcept(keep);
 }
+
 
 function onClick(e) {
   const rect = dom.getBoundingClientRect();
@@ -208,6 +237,22 @@ function onKey(e) {
 
 export function updateFocus(time) {
   updateTweens(time);
+
+  if (!focusMode || ring.length === 0) return;
+
+  // delta time (ms -> s)
+  if (!lastTime) lastTime = time;
+  const dt = (time - lastTime) / 1000;
+  lastTime = time;
+
+  // keep center locked in front of camera (in case camera moves)
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  ringCenter.copy(camera.position).add(dir.multiplyScalar(FOCUS_DISTANCE));
+
+  // advance ring and place
+  ringAngle = (ringAngle + RING_SPEED * dt) % (Math.PI * 2);
+  placeRing(ringAngle);
 }
 
 export function setupFocusInteraction({ scene: _scene, camera: _camera, renderer }) {
