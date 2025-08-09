@@ -1,28 +1,36 @@
 // animate.js
 import { orbitImages } from './imageLoader.js';
-import { isFocusMode, updateFocus } from './focusInteraction.js';
+import { updateFocus, isFocusMode } from './focusInteraction.js';
 
-function animate(scene, camera, renderer) {
-  function loop(time) {
+export function animate(scene, camera, renderer, updateStarfield = () => {}) {
+  let last = performance.now();
+
+  function loop(now = performance.now()) {
     requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (now - last) / 1000); // clamp to avoid huge jumps
+    last = now;
 
+    // Orbit the gallery only when not focused
     if (!isFocusMode()) {
-      const t = Date.now() * 0.001;
+      const t = now * 0.001;
       orbitImages.forEach((imgData, i) => {
-        const angle = imgData.angle + t + (i * 0.5);
+        const angle = imgData.angle + t * 0.5 + (i * 0.35);
         const x = Math.cos(angle) * 10;
         const z = Math.sin(angle) * 10;
-        const y = imgData.verticalOffset + Math.sin(t + i) * 0.5;
+        const y = imgData.verticalOffset + Math.sin(t + i) * 0.4;
         imgData.mesh.position.set(x, y, z);
         imgData.mesh.lookAt(0, 0, 0);
       });
     }
 
-    updateFocus(time || performance.now()); // run tweens
+    // focus interaction tweens + ring motion
+    updateFocus(now);
+
+    // ⭐ animate starfield shells
+    updateStarfield(dt);
+
     renderer.render(scene, camera);
   }
 
   loop();
 }
-
-export { animate };
