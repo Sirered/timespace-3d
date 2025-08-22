@@ -36,7 +36,7 @@ export async function loadImagesFromSupabase(scene, { envTexture = null } = {}) 
     });
 
   // Radius for the initial orbit
-  const R = 5;
+  const R = 4;
 
   for (let i = 0; i < data.length; i++) {
     const record = data[i];
@@ -74,6 +74,8 @@ export async function loadImagesFromSupabase(scene, { envTexture = null } = {}) 
       // });
 
       const mesh = new THREE.Mesh(geometry, material);
+      //50% smaller
+      mesh.scale.set(0.5, 0.5, 1);
       mesh.castShadow = false;
       mesh.receiveShadow = false;
 
@@ -81,7 +83,7 @@ export async function loadImagesFromSupabase(scene, { envTexture = null } = {}) 
       const angle = i; // simple stagger
       mesh.position.set(
         Math.cos(angle) * R,
-        (Math.random() - 0.5) * 4,
+        (Math.random() - 0.5) * 3,
         Math.sin(angle) * R
       );
       mesh.lookAt(0, 0, 0);
