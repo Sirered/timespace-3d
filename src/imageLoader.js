@@ -36,7 +36,7 @@ export async function loadImagesFromSupabase(scene, { envTexture = null } = {}) 
     });
 
   // Radius for the initial orbit
-  const R = 10;
+  const R = 5;
 
   for (let i = 0; i < data.length; i++) {
     const record = data[i];
@@ -97,10 +97,11 @@ export async function loadImagesFromSupabase(scene, { envTexture = null } = {}) 
       orbitImages.push({
         mesh,
         angle,
+        orbitRadius: R, // store R for each image
         verticalOffset: (Math.random() - 0.5) * 4,
-        // normalize people to an array of names for easier comparisons later
         record: { ...record, people: Object.keys(record.people || {}) },
       });
+
     } catch (e) {
       console.warn('Failed to load texture:', url, e);
     }

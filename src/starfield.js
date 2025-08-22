@@ -6,6 +6,7 @@ let _camera = null;
 let _mode = 'slab'; // 'slab' | 'shell'
 let _opts = {};
 let _time = 0;
+let _lastYaw = null;  
 
 const pointLayers = [];
 const spriteStars = [];
@@ -28,9 +29,9 @@ function orthoViewSize(camera) {
 
 function cameraBasis(camera) {
   const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);                 // look direction
+  camera.getWorldDirection(dir).normalize(); 
   const up = camera.up.clone().normalize();
-  const right = new THREE.Vector3().crossVectors(up, dir).normalize();
+  const right = new THREE.Vector3().crossVectors(dir, up).normalize();
   return { dir, up, right };
 }
 
@@ -55,9 +56,12 @@ function makePointsLayer_Slab({
 
   const center = camera.position.clone().addScaledVector(dir, depthOffset);
 
+  const offsets = [];
+
   for (let i = 0; i < count; i++) {
     const x = THREE.MathUtils.randFloat(-halfW, halfW);
     const y = THREE.MathUtils.randFloat(-halfH, halfH);
+    offsets.push({x,y});
 
     const p = center.clone()
       .addScaledVector(right, x)
@@ -68,7 +72,7 @@ function makePointsLayer_Slab({
     positions[i*3+2] = p.z;
 
     const c = new THREE.Color(tint);
-    const j = 0.9 + Math.random() * 0.2;
+    const j = 0.5 + Math.pow(Math.random(), 2) * 1.5;
     colors[i*3+0] = c.r * j;
     colors[i*3+1] = c.g * j;
     colors[i*3+2] = c.b * j;
@@ -98,7 +102,11 @@ function makePointsLayer_Slab({
     baseOpacity,
     speed: THREE.MathUtils.randFloat(0.7, 1.2),
     phase: Math.random() * Math.PI * 2,
+    offsets,
+    depthOffset, 
+    scrollX: 0,
   };
+
 }
 
 function makeBigSprites_Slab({
@@ -152,58 +160,116 @@ function makeBigSprites_Slab({
   return out;
 }
 
-function makePointsLayer_Shell({
-  count, sizePx, baseOpacity, tint, sprite,
-  innerRadius, depth, addTo, debugNoDepth, DPR, maxSizePx
+export function makePointsLayer_Shell({
+  count = 1500,
+  sprite,
+  innerRadius = 100,
+  depth = 30,
+  baseOpacity = 0.9,
+  tint = 0xffffff,
+  sizePx = 3,
+  DPR = 1,
+  maxSizePx = 10,
+  addTo = null,
+  debugNoDepth = false
 }) {
   const geom = new THREE.BufferGeometry();
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  const twinklePhases = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
-    const dir = new THREE.Vector3(
-      THREE.MathUtils.randFloatSpread(2),
-      THREE.MathUtils.randFloatSpread(2),
-      THREE.MathUtils.randFloatSpread(2)
-    ).normalize();
+    // Random point on a sphere shell
+    const u = Math.random();
+    const v = Math.random();
+    const theta = 2 * Math.PI * u;
+    const phi = Math.acos(2 * v - 1);
+    const radius = innerRadius + Math.random() * depth;
 
-    const r = innerRadius + Math.random() * depth;
-    const p = dir.multiplyScalar(r);
-    positions[i*3+0] = p.x;
-    positions[i*3+1] = p.y;
-    positions[i*3+2] = p.z;
+    const x = radius * Math.sin(phi) * Math.cos(theta);
+    const y = radius * Math.sin(phi) * Math.sin(theta);
+    const z = radius * Math.cos(phi);
 
-    const c = new THREE.Color(tint);
-    const j = 0.9 + Math.random() * 0.2;
-    colors[i*3+0] = c.r * j;
-    colors[i*3+1] = c.g * j;
-    colors[i*3+2] = c.b * j;
+    positions.set([x, y, z], i * 3);
+
+    // Random brightness scaling for twinkling + color depth
+    const brightness = 0.5 + Math.pow(Math.random(), 2) * 1.5;
+    const color = new THREE.Color(tint).multiplyScalar(brightness);
+    colors.set([color.r, color.g, color.b], i * 3);
+
+    // Star size
+    sizes[i] = Math.min(maxSizePx, sizePx + Math.random() * 2);
+
+    // Star's individual twinkle phase
+    twinklePhases[i] = Math.random() * Math.PI * 2;
   }
 
   geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geom.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  geom.setAttribute('twinklePhase', new THREE.BufferAttribute(twinklePhases, 1));
 
-  const mat = new THREE.PointsMaterial({
-    map: sprite,
+  // Custom shader material with time-based twinkling
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      pointTexture: { value: sprite },
+      time: { value: 0 },
+      opacity: { value: baseOpacity },
+      scale: { value: DPR },
+      depthWrite: false,
+depthTest: true,
+    },
+    vertexShader: `
+      uniform float time;
+      uniform float scale;
+      attribute float size;
+      attribute float twinklePhase;
+      varying float vAlpha;
+      varying vec3 vColor;
+
+      void main() {
+        vColor = color;
+
+        float twinkle = 0.7 + 0.3 * sin(time + twinklePhase);
+        vAlpha = twinkle;
+
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * scale * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D pointTexture;
+      uniform float opacity;
+      varying vec3 vColor;
+      varying float vAlpha;
+
+      void main() {
+        vec4 texColor = texture2D(pointTexture, gl_PointCoord);
+        gl_FragColor = vec4(vColor, opacity * texColor.a * vAlpha);
+      }
+    `,
     vertexColors: true,
     transparent: true,
-    depthWrite: false,
+    depthWrite: !debugNoDepth,
     depthTest: !debugNoDepth,
     blending: THREE.AdditiveBlending,
-    size: clamp(sizePx * DPR, 1, maxSizePx * DPR),
-    sizeAttenuation: false,
-    opacity: baseOpacity,
   });
 
-  const points = new THREE.Points(geom, mat);
+  const points = new THREE.Points(geom, material);
   points.renderOrder = -1000;
-  addTo.add(points);
+
+
+  if (addTo) {
+    addTo.add(points);
+  }
 
   return {
-    points,
-    baseOpacity,
-    speed: THREE.MathUtils.randFloat(0.7, 1.2),
-    phase: Math.random() * Math.PI * 2,
+    mesh: points,
+    update: (t) => {
+      material.uniforms.time.value = t;
+    }
   };
 }
 
@@ -236,8 +302,8 @@ export async function initStarfield(
     bigSpriteDepth = -15,    // where to place big sprites
 
     // shell options
-    innerRadius = 35,
-    depth = 55,
+    innerRadius = 120,
+    depth = 30,
   } = {}
 ) {
   // keep references/options for reseeding
@@ -321,20 +387,20 @@ export async function initStarfield(
     }
 
     // big sprite stars on a middle layer
-    spriteStars.push(
-      ...makeBigSprites_Slab({
-        count: bigTwinkleCount,
-        sprite,
-        viewMult,
-        depthOffset: bigSpriteDepth,
-        camera: _camera,
-        addTo: group,
-        debugNoDepth,
-        DPR,
-        sizeRangePx: [10, 20],
-        maxSizePx
-      })
-    );
+    //spriteStars.push(
+    //  ...makeBigSprites_Slab({
+    //    count: bigTwinkleCount,
+    //    sprite,
+    //    viewMult,
+    //    depthOffset: bigSpriteDepth,
+    //    camera: _camera,
+    //  addTo: group,
+    //  debugNoDepth,
+    //  DPR,
+    //  sizeRangePx: [10, 20],
+    //  maxSizePx
+    //})
+    //);
   } else {
     // sphere shell fallback
     pointLayers.push(
@@ -355,22 +421,6 @@ export async function initStarfield(
         tint: 0xffffff, sprite, innerRadius, depth, addTo: group, debugNoDepth, DPR, maxSizePx
       })
     );
-
-    // sparse big sprites on shell center (origin)
-    spriteStars.push(
-      ...makeBigSprites_Slab({
-        count: bigTwinkleCount,
-        sprite,
-        viewMult: 2.0,
-        depthOffset: 0,
-        camera: _camera,
-        addTo: group,
-        debugNoDepth,
-        DPR,
-        sizeRangePx: [12, 22],
-        maxSizePx
-      })
-    );
   }
 }
 
@@ -381,23 +431,87 @@ export async function reseedStarfield(scene) {
 }
 
 export function updateStarfield(dt = 0.016) {
-  if (!group) return;
+  if (!group || !_camera) return;
   _time += dt;
 
-  // subtle drift
-  group.rotation.y = Math.sin(_time * 0.07) * 0.02;
+  const look = new THREE.Vector3();
+  _camera.getWorldDirection(look);
+  let yaw = Math.atan2(look.x, look.z);              // [-PI, PI]
+  if (_lastYaw === null) _lastYaw = yaw;
+  let dYaw = yaw - _lastYaw;                          // wrap to [-PI, PI]
+  if (dYaw > Math.PI) dYaw -= Math.PI * 2;
+  if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+  _lastYaw = yaw;
 
-  // twinkle layers
+  // screen extents for wrapping (use current zoom)
+  const viewMult = _opts.viewMult ?? 1.35;
+  const { width, height } = orthoViewSize(_camera);
+  const halfW = 0.5 * width * viewMult;
+  const halfH = 0.5 * height * viewMult;
+
+  const { dir, up, right } = cameraBasis(_camera);
+
+  for (const layer of pointLayers) {
+    const { points, offsets, depthOffset } = layer;
+    const pos = points.geometry.attributes.position.array;
+
+    // farther layers drift less
+    const depthFactor = 20 / Math.max(1, Math.abs(depthOffset)); // tune base=20
+    const moveGain = 0.85;                                       // tune feel
+    const move = -dYaw * halfW * moveGain * depthFactor;         // sign matches “background moves opposite to camera turn”
+    layer.scrollX += move;
+    layer.scrollX *= 0.98;                                       // friction
+
+    const center = _camera.position.clone().addScaledVector(dir, depthOffset);
+
+    for (let i = 0; i < offsets.length; i++) {
+      let sx = offsets[i].x + layer.scrollX;
+      let sy = offsets[i].y; // no vertical drift (equator lock); add if you add pitch
+
+      // wrap in X to keep density constant
+      if (sx >  halfW) sx -= 2 * halfW;
+      if (sx < -halfW) sx += 2 * halfW;
+
+      const p = center.clone()
+        .addScaledVector(right, sx)
+        .addScaledVector(up,    sy);
+
+      const j = i * 3;
+      pos[j    ] = p.x;
+      pos[j + 1] = p.y;
+      pos[j + 2] = p.z;
+    }
+    points.geometry.attributes.position.needsUpdate = true;
+  }
+
+
+  // Twinkle points
   for (const L of pointLayers) {
     const tw = 0.9 + 0.1 * Math.sin(_time * L.speed + L.phase);
     L.points.material.opacity = L.baseOpacity * tw;
   }
 
-  // twinkle + tiny wobble for sprite stars
+  // Twinkle + wobble for sprite stars
   for (const S of spriteStars) {
     const tw = 0.85 + 0.15 * Math.sin(_time * S.speed + S.phase);
     S.sprite.material.opacity = S.baseOpacity * tw;
+
     const s = S.sprite.scale.x * (1 + S.wobble * Math.sin(_time * (S.speed * 2) + S.phase * 1.7));
     S.sprite.scale.setScalar(clamp(s, 1, _opts.maxSizePx * (window.devicePixelRatio || 1)));
+
+    // Reposition sprite based on view plane
+    const { dir, up, right } = cameraBasis(_camera);
+    const viewMult = _opts.viewMult || 1.35;
+    const { width, height } = orthoViewSize(_camera);
+    const halfW = 0.5 * width * viewMult;
+    const halfH = 0.5 * height * viewMult;
+    const x = THREE.MathUtils.randFloat(-halfW, halfW);
+    const y = THREE.MathUtils.randFloat(-halfH, halfH);
+    const center = _camera.position.clone().addScaledVector(dir, _opts.bigSpriteDepth || -15);
+    const pos = center.clone()
+      .addScaledVector(right, x)
+      .addScaledVector(up, y);
+    S.sprite.position.copy(pos);
   }
 }
+
