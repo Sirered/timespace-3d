@@ -36,7 +36,16 @@ export async function loadImagesFromSupabase(scene, { envTexture = null } = {}) 
     });
 
   // Radius for the initial orbit
-  const R = 4;
+  const main_R = 4;
+  const sub_R = 3.5;
+  const SUB_Y_OFFSET = -3;
+
+  const SUB_X_SHIFT = 5;
+  const SUB_Y_LIFT = 1;
+  const MAIN_X_SHIFT = -1;
+  const MAIN_Y_LIFT = 1;
+  const MAIN_Z_CHANGE = 0;
+  const SUB_Z_CHANGE = 0.5;
 
   for (let i = 0; i < data.length; i++) {
     const record = data[i];
@@ -80,11 +89,17 @@ export async function loadImagesFromSupabase(scene, { envTexture = null } = {}) 
       mesh.receiveShadow = false;
 
       // place on a ring, add a little vertical variation
-      const angle = i; // simple stagger
+      const angle = i; // simple       const isSub = i >= splitIndex;
+      const isSub = (i%3) === 2;
+      const orbitR = isSub ? sub_R : main_R;
+
+      const jitterY = (Math.random() - 0.5) * 1.5;
+      const baseY   = isSub ? SUB_Y_OFFSET : 0;
+
       mesh.position.set(
-        Math.cos(angle) * R,
-        (Math.random() - 0.5) * 3,
-        Math.sin(angle) * R
+        Math.cos(angle) * orbitR,
+        baseY + jitterY,
+        Math.sin(angle) * orbitR
       );
       mesh.lookAt(0, 0, 0);
 
@@ -99,8 +114,12 @@ export async function loadImagesFromSupabase(scene, { envTexture = null } = {}) 
       orbitImages.push({
         mesh,
         angle,
-        orbitRadius: R, // store R for each image
-        verticalOffset: (Math.random() - 0.5) * 4,
+        band: isSub ? 'sub' : 'main',
+        orbitRadius: orbitR, // store R for each image
+        verticalOffset: baseY + jitterY,
+        offsetX: isSub ? SUB_X_SHIFT : MAIN_X_SHIFT,
+        yLift:   isSub ? SUB_Y_LIFT  : MAIN_Y_LIFT,
+        zChange: isSub ? SUB_Z_CHANGE : MAIN_Z_CHANGE,
         record: { ...record, people: Object.keys(record.people || {}) },
       });
 

@@ -42,7 +42,7 @@ const HOVER_RING_SPEED = 0.2;
 
 const RELATED_MAX = 8;
 const FOCUS_DISTANCE = 7;
-const RING_RADIUS = 5;
+const RING_RADIUS = 4.5;
 const RING_SCALE = 1.3;
 const DIM_ALPHA = 0.25;
 
