@@ -8,48 +8,51 @@ import { updateFocus, isFocusMode } from './focusInteraction.js';
  *
  * @param {THREE.Scene} scene
  * @param {THREE.Camera} camera
- * @param {THREE.Renderer} renderer
- * @param {Function} updateStarfield - optional starfield updater
- * @param {OrbitControls} controls - optional OrbitControls
+ * @param {THREE.WebGLRenderer|import('three/examples/jsm/postprocessing/EffectComposer').EffectComposer} rendererOrComposer
+ * @param {Function} updateFn - per-frame updater (e.g., starfield)
+ * @param {OrbitControls} controls
  */
-export function animate(scene, camera, renderer, updateStarfield = () => {}, controls = null) {
+export function animate(scene, camera, rendererOrComposer, updateFn = () => {}, controls = null, backplates = null) {
   let last = performance.now();
+  let orbitTime = 0;                 // <— new, paused while focused
 
   function loop(now = performance.now()) {
     requestAnimationFrame(loop);
-    const dt = Math.min(0.05, (now - last) / 1000); // clamp to avoid huge jumps
+    const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-    const t = now * 0.001;
+    // advance the “orbit clock” only when not focused
+    const focused = isFocusMode();
+    if (!focused) orbitTime += dt;   // <— this is the only time base we use
 
     // Orbit the gallery only when not focused
-    if (!isFocusMode()) {
+    if (!focused) {
       orbitImages.forEach((imgData, i) => {
-        const angle = imgData.angle + t * 0.5 + (i * 0.35);
+        const angle  = imgData.angle + orbitTime * 0.5 + (i * 0.35);
 
         const orbitR = imgData.orbitRadius ?? 10;
 
-        // Tilt the orbit ring diagonally in the Y-Z plane
         const rawX = Math.cos(angle) * orbitR;
         const rawZ = Math.sin(angle) * orbitR;
         const rawY = Math.sin(angle) * orbitR * 0.5;
 
-        const y = rawY + imgData.verticalOffset + Math.sin(t + i) * 0.4 + imgData.yLift;
-        const x = rawX + imgData.offsetX;
-        const z = rawZ + imgData.zChange;
+        const y = rawY + imgData.verticalOffset + Math.sin(orbitTime + i) * 0.4;
 
-        imgData.mesh.position.set(x, y, z);
+        imgData.mesh.position.set(rawX, y, rawZ);
 
-        // Orient image toward center model (adjust if model offset)
         imgData.mesh.lookAt(camera.position);
       });
     }
 
     updateFocus(now);
-    updateStarfield(dt); 
+    updateFn(dt);
+    controls?.update?.();
+    backplates.update();
 
-    controls?.update(); // optional: update orbit controls
-    renderer.render(scene, camera);
+    const isComposer = !rendererOrComposer?.isWebGLRenderer;
+    if (isComposer) rendererOrComposer.render();
+    else rendererOrComposer.render(scene, camera);
+
   }
 
   loop();
