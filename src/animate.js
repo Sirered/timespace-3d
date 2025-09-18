@@ -1,4 +1,5 @@
 // animate.js
+import * as THREE from 'three';
 import { orbitImages } from './imageLoader.js';
 import { updateFocus, isFocusMode } from './focusInteraction.js';
 
@@ -28,6 +29,7 @@ export function animate(scene, camera, rendererOrComposer, updateFn = () => {}, 
     if (!focused) {
       orbitImages.forEach((imgData, i) => {
         const angle  = imgData.angle + orbitTime * 0.5 + (i * 0.35);
+
         const orbitR = imgData.orbitRadius ?? 10;
 
         const rawX = Math.cos(angle) * orbitR;
@@ -37,6 +39,7 @@ export function animate(scene, camera, rendererOrComposer, updateFn = () => {}, 
         const y = rawY + imgData.verticalOffset + Math.sin(orbitTime + i) * 0.4;
 
         imgData.mesh.position.set(rawX, y, rawZ);
+
         imgData.mesh.lookAt(camera.position);
       });
     }
@@ -49,6 +52,7 @@ export function animate(scene, camera, rendererOrComposer, updateFn = () => {}, 
     const isComposer = !rendererOrComposer?.isWebGLRenderer;
     if (isComposer) rendererOrComposer.render();
     else rendererOrComposer.render(scene, camera);
+
   }
 
   loop();

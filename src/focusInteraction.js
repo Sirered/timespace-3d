@@ -36,13 +36,31 @@ let ringCenter = new THREE.Vector3();
 let ringAngle = 0;
 let lastTime = 0;
 
-const RING_SPEED = 0.4; // radians per second (tweak)
+const BASE_RING_SPEED = 0.5; // radians per second (tweak)
+const HOVER_RING_SPEED = 0.2;
 
 
 const RELATED_MAX = 8;
 const FOCUS_DISTANCE = 7;
-const RING_RADIUS = 3.5;
+const RING_RADIUS = 4.5;
+const RING_SCALE = 1.3;
 const DIM_ALPHA = 0.25;
+
+let isHoveringRing = false;
+
+//slower when mouse hovering
+function onMouseMove(e) {
+  const rect = dom.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const ringMeshes = ring.map(r => r.mesh);
+  const intersects = raycaster.intersectObjects(ringMeshes, true);
+
+  isHoveringRing = intersects.length > 0;
+}
 
 function saveOriginal(mesh) {
   if (SAVED.has(mesh)) return;
@@ -114,7 +132,7 @@ function moveInFrontOfCamera(mesh) {
   saveOriginal(mesh);
   tween(mesh.position, { x: target.x, y: target.y, z: target.z });
   mesh.lookAt(camera.position);
-  tween(mesh.scale, { x: mesh.scale.x * 1.5, y: mesh.scale.y * 1.5, z: mesh.scale.z * 1.5 });
+  tween(mesh.scale, { x: mesh.scale.x * 4, y: mesh.scale.y * 4, z: mesh.scale.z * 4 });
   mesh.renderOrder = 9;
 }
 
@@ -180,6 +198,15 @@ function focusImage(picked) {
 
   const keep = new Set([picked.mesh, ...related.map(r => r.mesh)]);
   dimAllExcept(keep);
+
+  //scale ring image
+  ring.forEach(({ mesh }) => {
+  tween(mesh.scale, {
+      x: mesh.scale.x * RING_SCALE,
+      y: mesh.scale.y * RING_SCALE,
+      z: mesh.scale.z * RING_SCALE,
+    }, 300);
+  });
 }
 
 
@@ -250,8 +277,10 @@ export function updateFocus(time) {
   camera.getWorldDirection(dir);
   ringCenter.copy(camera.position).add(dir.multiplyScalar(FOCUS_DISTANCE));
 
-  // advance ring and place
-  ringAngle = (ringAngle + RING_SPEED * dt) % (Math.PI * 2);
+  // // advance ring and place
+  // ringAngle = (ringAngle + RING_SPEED * dt) % (Math.PI * 2);
+  const currentSpeed = isHoveringRing ? HOVER_RING_SPEED : BASE_RING_SPEED;
+  ringAngle = (ringAngle + currentSpeed * dt) % (Math.PI * 2);
   placeRing(ringAngle);
 }
 
@@ -263,6 +292,7 @@ export function setupFocusInteraction({ scene: _scene, camera: _camera, renderer
   mouse = new THREE.Vector2();
 
   dom.addEventListener('click', onClick);
+  dom.addEventListener('mousemove', onMouseMove);
   window.addEventListener('keydown', onKey);
 }
 
