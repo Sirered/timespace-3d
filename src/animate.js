@@ -57,7 +57,7 @@
 
 import { orbitImages } from '/src/imageLoader.js';
 import { updateFocus, isFocusMode } from './focusInteraction.js';
-import { hasLogoPath, getPointOnLogoPath } from '/src/logoPath.js';
+import { hasLogoPath, getPointOnLogoPath, getPathsCount } from '/src/logoPath.js';
 
 export function animate(scene, camera, renderer, updateStarfield = () => {}, controls = null) {
   console.log('[animate] orbitImages at start:', orbitImages.length);
@@ -82,7 +82,8 @@ export function animate(scene, camera, renderer, updateStarfield = () => {}, con
 
         if (hasLogoPath()) {
           const tParam = (now * 0.00005 * (imgData.speed ?? 0.15) + (imgData.phase ?? i / orbitImages.length)) % 1;
-          const pathIdx = (imgData.orbitBand % 2); // enforce only 0 or 1
+          const count = Math.max(1, getPathsCount());
+          const pathIdx = imgData.orbitBand % count; // wrap to available paths
           const p = getPointOnLogoPath(tParam, {
             pathIndex: pathIdx,
             xOffset: (imgData.offsetX ?? -2.0),
