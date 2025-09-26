@@ -87,8 +87,8 @@ async function init() {
   setupFocusInteraction({ scene, camera, renderer });
   resizeHandler(camera, renderer);
 
-  loadGLBFromURL('/circ_color.glb', scene, camera, () => {
-  console.log('circ_color.glb loaded successfully');
+  loadGLBFromURL('/TextureFixed-3.glb', scene, camera, () => {
+  console.log('glb file loaded successfully');
   }, {
     fillK: 0.8,
     topMarginFrac: -0.15,   // -15% of view height (stable)

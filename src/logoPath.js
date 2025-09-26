@@ -52,6 +52,7 @@ export function setLogoFixedPathsFromModel(model, scene = null) {
     console.warn('[logoPath] mesh less than 5:', meshes.length);
     return;
   }
+  console.log('[logoPath] toall meshs:', meshes.length)
 
   // Sort by Y from top to bottom
   meshes.sort((a, b) => b.centerY - a.centerY);
@@ -68,7 +69,7 @@ export function setLogoFixedPathsFromModel(model, scene = null) {
     if (scene && curve) {
       const pts = curve.getPoints(600);
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      const mat = new THREE.LineBasicMaterial({ color: 0x000000 });
+      const mat = new THREE.LineBasicMaterial({ color: 0x0ff000 });
       const line = new THREE.Line(geo,mat);
       scene.add(line);
       _debugLines.push(line);
