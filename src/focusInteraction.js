@@ -45,11 +45,21 @@ const FOCUS_DISTANCE = 7;
 const RING_RADIUS = 4.5;
 const RING_SCALE = 1.3;
 const DIM_ALPHA = 0.25;
-const ORDER_BG    = 5;    // background photos
-const ORDER_RING  = 50;   // ring photos
-const ORDER_FOCUS = 100;  // focused photo
+const ORDER_BG = 5, ORDER_RING = 50, ORDER_FOCUS = 100;
+
 
 let isHoveringRing = false;
+
+function focusParams() {
+  const w = (camera.right - camera.left) / (camera.zoom || 1);
+  const h = (camera.top   - camera.bottom) / (camera.zoom || 1);
+  const base = Math.min(w, h); // shorter side in world units
+  return {
+    FOCUS_DISTANCE: base * 0.38,   // was 7; now proportional
+    RING_RADIUS:    base * 0.22,   // was 4.5
+    RING_SCALE:     1.25           // extra pop on small screens
+  };
+}
 
 //slower when mouse hovering
 function onMouseMove(e) {
@@ -111,13 +121,14 @@ function getCameraBasis() {
 
 function placeRing(angleOffset) {
   const { right, up, viewDir } = getCameraBasis();
+  const { RING_RADIUS } = focusParams();
 
   ring.forEach(o => {
     const a = o.baseAngle + angleOffset;
     const pos = ringCenter.clone()
       .addScaledVector(right, Math.cos(a) * RING_RADIUS)
       .addScaledVector(up,    Math.sin(a) * RING_RADIUS)
-      .addScaledVector(viewDir, -0.05); // tiny nudge toward camera
+      .addScaledVector(viewDir, -0.05);
 
     o.mesh.position.copy(pos);
     o.mesh.lookAt(camera.position);
@@ -129,7 +140,9 @@ function placeRing(angleOffset) {
 
 
 
+
 function moveInFrontOfCamera(mesh) {
+  const { FOCUS_DISTANCE } = focusParams();
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   const target = camera.position.clone().add(dir.multiplyScalar(FOCUS_DISTANCE));
@@ -142,6 +155,7 @@ function moveInFrontOfCamera(mesh) {
   if ('depthWrite' in mesh.material) mesh.material.depthWrite = false;
   if ('depthTest'  in mesh.material) mesh.material.depthTest  = false;
 }
+
 
 function dimAllExcept(keep = new Set()) {
   orbitImages.forEach(({ mesh }) => {
@@ -310,6 +324,8 @@ export function setupFocusInteraction({ scene: _scene, camera: _camera, renderer
   dom.addEventListener('click', onClick);
   dom.addEventListener('mousemove', onMouseMove);
   window.addEventListener('keydown', onKey);
+  dom.addEventListener('pointermove', onMouseMove, { passive: true });
+  dom.addEventListener('pointerdown', onClick);
 }
 
 export function isFocusMode() {
