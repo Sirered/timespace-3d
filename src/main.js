@@ -3,7 +3,7 @@ import { setupScene } from './setupScene.js';
 import { setupCamera } from './setupCamera.js';
 import { setupRenderer } from './setupRenderer.js';
 import { setupLights } from './setupLights.js';
-import { resizeHandler } from './resizeHandler.js';
+import { setupResponsive } from './resizeHandler.js';
 import { animate } from './animate.js';
 import { loadGLBFromURL } from './glbLoader.js';
 import { loadImagesFromSupabase } from './imageLoader.js';
@@ -53,8 +53,10 @@ async function init() {
   scene    = setupScene();
   camera   = setupCamera();
   renderer = setupRenderer();
+  
 
   const backplates = addBackplates(scene, camera);
+  const teardownResize = setupResponsive({ scene, camera, renderer: renderer, backplates });
 
 
   controls = setupControls(camera, renderer, {
@@ -85,7 +87,7 @@ async function init() {
   // --- Content ---
   await loadImagesFromSupabase(scene);
   setupFocusInteraction({ scene, camera, renderer });
-  resizeHandler(camera, renderer);
+
 
   loadGLBFromURL('/TextureFixed-5.glb', scene, camera, () => {
   console.log('glb file loaded successfully');

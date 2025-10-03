@@ -45,8 +45,21 @@ const FOCUS_DISTANCE = 7;
 const RING_RADIUS = 4.5;
 const RING_SCALE = 1.3;
 const DIM_ALPHA = 0.25;
+const ORDER_BG = 5, ORDER_RING = 50, ORDER_FOCUS = 100;
+
 
 let isHoveringRing = false;
+
+function focusParams() {
+  const w = (camera.right - camera.left) / (camera.zoom || 1);
+  const h = (camera.top   - camera.bottom) / (camera.zoom || 1);
+  const base = Math.min(w, h); // shorter side in world units
+  return {
+    FOCUS_DISTANCE: base * 0.38,   // was 7; now proportional
+    RING_RADIUS:    base * 0.22,   // was 4.5
+    RING_SCALE:     1.25           // extra pop on small screens
+  };
+}
 
 //slower when mouse hovering
 function onMouseMove(e) {
@@ -108,23 +121,28 @@ function getCameraBasis() {
 
 function placeRing(angleOffset) {
   const { right, up, viewDir } = getCameraBasis();
+  const { RING_RADIUS } = focusParams();
 
   ring.forEach(o => {
     const a = o.baseAngle + angleOffset;
     const pos = ringCenter.clone()
       .addScaledVector(right, Math.cos(a) * RING_RADIUS)
       .addScaledVector(up,    Math.sin(a) * RING_RADIUS)
-      .addScaledVector(viewDir, -0.05); // tiny nudge toward camera
+      .addScaledVector(viewDir, -0.05);
 
     o.mesh.position.copy(pos);
     o.mesh.lookAt(camera.position);
-    o.mesh.renderOrder = 8;
+    o.mesh.renderOrder = ORDER_RING;
+    if ('depthWrite' in o.mesh.material) o.mesh.material.depthWrite = false;
+    if ('depthTest'  in o.mesh.material) o.mesh.material.depthTest  = false;
   });
 }
 
 
 
+
 function moveInFrontOfCamera(mesh) {
+  const { FOCUS_DISTANCE } = focusParams();
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   const target = camera.position.clone().add(dir.multiplyScalar(FOCUS_DISTANCE));
@@ -133,16 +151,22 @@ function moveInFrontOfCamera(mesh) {
   tween(mesh.position, { x: target.x, y: target.y, z: target.z });
   mesh.lookAt(camera.position);
   tween(mesh.scale, { x: mesh.scale.x * 4, y: mesh.scale.y * 4, z: mesh.scale.z * 4 });
-  mesh.renderOrder = 9;
+  mesh.renderOrder = ORDER_FOCUS;
+  if ('depthWrite' in mesh.material) mesh.material.depthWrite = false;
+  if ('depthTest'  in mesh.material) mesh.material.depthTest  = false;
 }
+
 
 function dimAllExcept(keep = new Set()) {
   orbitImages.forEach(({ mesh }) => {
     if (!('opacity' in mesh.material)) return;
-    const target = keep.has(mesh) ? 1.0 : DIM_ALPHA;
+    const isKept = keep.has(mesh);
     mesh.material.transparent = true;
-    mesh.material.depthWrite = false;
-    mesh.material.opacity = target;
+    if ('depthWrite' in mesh.material) mesh.material.depthWrite = false;
+    if ('depthTest'  in mesh.material) mesh.material.depthTest  = false;
+    if ('opacity'    in mesh.material) mesh.material.opacity    = isKept ? 1.0 : DIM_ALPHA;
+    // background layer for everything not kept; ring/focus will be promoted below
+    if (!isKept) mesh.renderOrder = ORDER_BG;
   });
 }
 
@@ -154,7 +178,10 @@ function undimAll() {
     } else if ('opacity' in mesh.material) {
       mesh.material.opacity = 1.0;
     }
-    mesh.material.depthWrite = true;
+    if ('depthWrite' in mesh.material) mesh.material.depthWrite = false;
+    if ('depthTest'  in mesh.material) mesh.material.depthTest  = false;
+    // return to the default background tier
+    mesh.renderOrder = ORDER_BG;
   });
 }
 
@@ -198,6 +225,9 @@ function focusImage(picked) {
 
   const keep = new Set([picked.mesh, ...related.map(r => r.mesh)]);
   dimAllExcept(keep);
+
+  picked.mesh.renderOrder = ORDER_FOCUS;
+  ring.forEach(({ mesh }) => { mesh.renderOrder = ORDER_RING; });
 
   //scale ring image
   ring.forEach(({ mesh }) => {
@@ -294,6 +324,8 @@ export function setupFocusInteraction({ scene: _scene, camera: _camera, renderer
   dom.addEventListener('click', onClick);
   dom.addEventListener('mousemove', onMouseMove);
   window.addEventListener('keydown', onKey);
+  dom.addEventListener('pointermove', onMouseMove, { passive: true });
+  dom.addEventListener('pointerdown', onClick);
 }
 
 export function isFocusMode() {

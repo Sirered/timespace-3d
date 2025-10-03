@@ -358,10 +358,10 @@ export async function loadImagesFromSupabase(scene) {
       transparent: true,
       premultipliedAlpha: false,
     });
-
-    const mesh = new THREE.Sprite(material);
-    mesh.renderOrder = 10;
-    mesh.scale.set(1, 1, 1); // set later per orbit
+    
+      const mesh = new THREE.Sprite(material);
+      mesh.userData.basePx = 110;  // tweak 90–130 for phone, 140–180 for tablet
+      mesh.renderOrder = 5;
 
     scene.add(mesh);
 

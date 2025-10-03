@@ -72,7 +72,7 @@
 // }
 
 // export { loadGLBFromURL };
-
+// glbLoader.js
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { setLogoFixedPathsFromModel } from '/src/logoPath.js';
 
