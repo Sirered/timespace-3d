@@ -89,7 +89,7 @@ async function init() {
   setupFocusInteraction({ scene, camera, renderer });
 
 
-  loadGLBFromURL('/TextureFixed-3.glb', scene, camera, () => {
+  loadGLBFromURL('/TextureFixed-5.glb', scene, camera, () => {
   console.log('glb file loaded successfully');
   }, {
     fillK: 0.8,
