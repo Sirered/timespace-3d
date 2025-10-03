@@ -1,3 +1,4 @@
+// setupScene.js
 import * as THREE from 'three';
 
 function setupScene() {

@@ -49,7 +49,7 @@ export async function loadImagesFromSupabase(scene) {
       });
       const mesh = new THREE.Sprite(material);
       mesh.scale.set(1, 1, 1.0);
-      mesh.renderOrder = 10;
+      mesh.renderOrder = 5;
 
       scene.add(mesh);
 

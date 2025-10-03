@@ -54,7 +54,7 @@
 
 //   loop();
 // }
-
+// animate.js
 import { orbitImages } from '/src/imageLoader.js';
 import { updateFocus, isFocusMode } from './focusInteraction.js';
 import { hasLogoPath, getPointOnLogoPath, getPathsCount } from '/src/logoPath.js';
