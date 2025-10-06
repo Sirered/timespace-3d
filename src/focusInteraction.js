@@ -25,6 +25,11 @@ function updateTweens(time) {
     if (tw.done) tweens.delete(tw);
   }
 }
+function cancelTweensFor(obj) {
+  for (const tw of Array.from(tweens)) {
+    if (tw.obj === obj) tweens.delete(tw);
+  }
+}
 // ----------------------------------------------------------
 
 let raycaster, mouse, dom, camera, scene;
@@ -36,45 +41,88 @@ let ringCenter = new THREE.Vector3();
 let ringAngle = 0;
 let lastTime = 0;
 
-const BASE_RING_SPEED = 0.5; // radians per second (tweak)
+const BASE_RING_SPEED = 0.5;   // rad/s
 const HOVER_RING_SPEED = 0.2;
 
-
 const RELATED_MAX = 8;
-const FOCUS_DISTANCE = 7;
-const RING_RADIUS = 4.5;
-const RING_SCALE = 1.3;
 const DIM_ALPHA = 0.25;
 const ORDER_BG = 5, ORDER_RING = 50, ORDER_FOCUS = 100;
 
-
 let isHoveringRing = false;
 
+// Debounce to avoid double-trigger (pointerdown + click, etc.)
+let _lastActionTs = 0;
+const ACTION_DEBOUNCE_MS = 160;
+
+// Dynamic sizing based on current ortho view
 function focusParams() {
-  const w = (camera.right - camera.left) / (camera.zoom || 1);
-  const h = (camera.top   - camera.bottom) / (camera.zoom || 1);
-  const base = Math.min(w, h); // shorter side in world units
+  // stable across aspect ratios
+  const viewH = (camera.top - camera.bottom) / (camera.zoom || 1); // 10 at zoom=1
+  const base  = viewH;
+
   return {
-    FOCUS_DISTANCE: base * 0.38,   // was 7; now proportional
-    RING_RADIUS:    base * 0.22,   // was 4.5
-    RING_SCALE:     1.25           // extra pop on small screens
+    FOCUS_DISTANCE: base * 0.70, 
+    RING_RADIUS:    base * 0.45,  
+    RING_SCALE:     1.30          
   };
 }
 
-//slower when mouse hovering
-function onMouseMove(e) {
+// ------------------- pointer handlers -------------------
+function onPointerMove(e) {
+  const rect = dom.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const ringMeshes = ring.map(r => r.mesh);
+  const intersects = raycaster.intersectObjects(ringMeshes, true);
+  isHoveringRing = intersects.length > 0;
+}
+
+function onPointerDown(e) {
+  const now = performance.now();
+  if (now - _lastActionTs < ACTION_DEBOUNCE_MS) return;
+  _lastActionTs = now;
+
   const rect = dom.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
 
-  const ringMeshes = ring.map(r => r.mesh);
-  const intersects = raycaster.intersectObjects(ringMeshes, true);
+  let allowedMeshes;
+  if (!focusMode) {
+    allowedMeshes = orbitImages.filter(o => o.mesh?.visible).map(o => o.mesh);
+  } else {
+    const ringMeshes = ring.map(r => r.mesh);
+    allowedMeshes = [focused.mesh, ...ringMeshes];
+  }
 
-  isHoveringRing = intersects.length > 0;
+  const intersects = raycaster.intersectObjects(allowedMeshes, true);
+  if (!intersects.length) {
+    if (focusMode) clearFocus(); // exit w/ tween when clicking empty space
+    return;
+  }
+
+  const mesh = intersects[0].object;
+  const picked = orbitImages.find(o => o.mesh === mesh);
+  if (!picked) return;
+
+  if (focusMode) {
+    // Switching focus to a ring member: do an INSTANT restore to baseline
+    // to avoid overscaled frames, then refocus.
+    if (focused && focused.mesh === mesh) return; // no-op if same
+    clearFocus({ instant: true });
+    focusImage(picked);
+    return;
+  }
+
+  // normal focus
+  focusImage(picked);
 }
 
+
+// ------------------- helpers -------------------
 function saveOriginal(mesh) {
   if (SAVED.has(mesh)) return;
   SAVED.set(mesh, {
@@ -89,6 +137,8 @@ function saveOriginal(mesh) {
 function restoreOriginal(mesh) {
   const s = SAVED.get(mesh);
   if (!s) return;
+  cancelTweensFor(mesh.position);
+  cancelTweensFor(mesh.scale);
   tween(mesh.position, { x: s.position.x, y: s.position.y, z: s.position.z });
   mesh.quaternion.copy(s.quaternion);
   tween(mesh.scale, { x: s.scale.x, y: s.scale.y, z: s.scale.z });
@@ -96,19 +146,28 @@ function restoreOriginal(mesh) {
   mesh.renderOrder = s.renderOrder ?? 0;
 }
 
+function restoreOriginalInstant(mesh) {
+  const s = SAVED.get(mesh);
+  if (!s) return;
+  cancelTweensFor(mesh.position);
+  cancelTweensFor(mesh.scale);
+  mesh.position.copy(s.position);
+  mesh.quaternion.copy(s.quaternion);
+  mesh.scale.copy(s.scale);
+  if ('opacity' in mesh.material) mesh.material.opacity = s.opacity;
+  mesh.renderOrder = s.renderOrder ?? 0;
+}
+
 function isRelated(aRecord, bRecord) {
-  // People might already be an array (from the loader) or still be an object.
   const a = Array.isArray(aRecord?.people)
     ? aRecord.people
     : Object.keys(aRecord?.people || {});
   const b = Array.isArray(bRecord?.people)
     ? bRecord.people
     : Object.keys(bRecord?.people || {});
-
   if (!a.length || !b.length) return false;
-
   const setA = new Set(a);
-  return b.some(p => setA.has(p));  // overlap = related
+  return b.some(p => setA.has(p));
 }
 
 function getCameraBasis() {
@@ -129,7 +188,6 @@ function placeRing(angleOffset) {
       .addScaledVector(right, Math.cos(a) * RING_RADIUS)
       .addScaledVector(up,    Math.sin(a) * RING_RADIUS)
       .addScaledVector(viewDir, -0.05);
-
     o.mesh.position.copy(pos);
     o.mesh.lookAt(camera.position);
     o.mesh.renderOrder = ORDER_RING;
@@ -137,9 +195,6 @@ function placeRing(angleOffset) {
     if ('depthTest'  in o.mesh.material) o.mesh.material.depthTest  = false;
   });
 }
-
-
-
 
 function moveInFrontOfCamera(mesh) {
   const { FOCUS_DISTANCE } = focusParams();
@@ -156,22 +211,22 @@ function moveInFrontOfCamera(mesh) {
   if ('depthTest'  in mesh.material) mesh.material.depthTest  = false;
 }
 
-
 function dimAllExcept(keep = new Set()) {
   orbitImages.forEach(({ mesh }) => {
+    if (!mesh?.visible) return;
     if (!('opacity' in mesh.material)) return;
     const isKept = keep.has(mesh);
     mesh.material.transparent = true;
     if ('depthWrite' in mesh.material) mesh.material.depthWrite = false;
     if ('depthTest'  in mesh.material) mesh.material.depthTest  = false;
-    if ('opacity'    in mesh.material) mesh.material.opacity    = isKept ? 1.0 : DIM_ALPHA;
-    // background layer for everything not kept; ring/focus will be promoted below
+    mesh.material.opacity = isKept ? 1.0 : DIM_ALPHA;
     if (!isKept) mesh.renderOrder = ORDER_BG;
   });
 }
 
 function undimAll() {
   orbitImages.forEach(({ mesh }) => {
+    if (!mesh?.visible) return;
     const s = SAVED.get(mesh);
     if (s && 'opacity' in mesh.material) {
       mesh.material.opacity = s.opacity;
@@ -180,47 +235,66 @@ function undimAll() {
     }
     if ('depthWrite' in mesh.material) mesh.material.depthWrite = false;
     if ('depthTest'  in mesh.material) mesh.material.depthTest  = false;
-    // return to the default background tier
     mesh.renderOrder = ORDER_BG;
   });
 }
 
-export function clearFocus() {
+export function clearFocus(opts = {}) {
   if (!focusMode) return;
+  const instant = !!opts.instant;
   focusMode = false;
 
-  ring.forEach(({ mesh }) => restoreOriginal(mesh));
+  // restore ring members
+  ring.forEach(({ mesh }) => instant ? restoreOriginalInstant(mesh) : restoreOriginal(mesh));
   ring.length = 0;
 
+  // restore focused
   if (focused) {
-    restoreOriginal(focused.mesh);
+    instant ? restoreOriginalInstant(focused.mesh) : restoreOriginal(focused.mesh);
     focused = null;
   }
-  undimAll();
+
+    undimAll();
+    orbitImages.forEach(({ mesh }) => {
+      if (mesh) mesh.renderOrder = ORDER_BG;
+    });
 }
 
 function focusImage(picked) {
   focusMode = true;
+  lastTime = performance.now();
+
   focused = picked;
+
+  // selected goes to center
   moveInFrontOfCamera(picked.mesh);
 
   const related = orbitImages
-    .filter(o => o.mesh !== picked.mesh && isRelated(picked.record, o.record))
+    .filter(o => o.mesh?.visible && o.mesh !== picked.mesh && isRelated(picked.record, o.record))
     .slice(0, RELATED_MAX);
 
-  // center in front of camera (updated each frame too)
+  const { FOCUS_DISTANCE, RING_SCALE } = focusParams();
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   ringCenter.copy(camera.position).add(dir.multiplyScalar(FOCUS_DISTANCE));
 
-  ring = related.map((o, i) => {
+
+  for (const o of related) {
     saveOriginal(o.mesh);
-    // assign evenly spaced base angles
+    const saved = SAVED.get(o.mesh);
+    if (saved) {
+      cancelTweensFor(o.mesh.scale);
+      o.mesh.scale.copy(saved.scale);
+    }
+  }
+
+  // build new ring
+  ring = related.map((o, i) => {
     o.baseAngle = (i / Math.max(related.length, 1)) * Math.PI * 2;
     return o;
   });
 
-  // place once immediately (no motion yet)
+  // place once immediately
   placeRing(0);
 
   const keep = new Set([picked.mesh, ...related.map(r => r.mesh)]);
@@ -229,65 +303,23 @@ function focusImage(picked) {
   picked.mesh.renderOrder = ORDER_FOCUS;
   ring.forEach(({ mesh }) => { mesh.renderOrder = ORDER_RING; });
 
-  //scale ring image
+  // scale ring images from baseline → RING_SCALE
   ring.forEach(({ mesh }) => {
-  tween(mesh.scale, {
-      x: mesh.scale.x * RING_SCALE,
-      y: mesh.scale.y * RING_SCALE,
-      z: mesh.scale.z * RING_SCALE,
+    const saved = SAVED.get(mesh);
+    if (!saved) return;
+    cancelTweensFor(mesh.scale);
+    mesh.scale.copy(saved.scale); // baseline
+    tween(mesh.scale, {
+      x: saved.scale.x * RING_SCALE,
+      y: saved.scale.y * RING_SCALE,
+      z: saved.scale.z * RING_SCALE,
     }, 300);
   });
 }
 
 
-function onClick(e) {
-  const rect = dom.getBoundingClientRect();
-  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-  raycaster.setFromCamera(mouse, camera);
-
-  // Determine allowed meshes depending on mode
-  let allowedMeshes;
-  if (!focusMode) {
-    // Not in focus mode — allow all orbit images
-    allowedMeshes = orbitImages.map(o => o.mesh);
-  } else {
-    // In focus mode — only allow the focused one or its surrounding ring
-    const ringMeshes = ring.map(r => r.mesh);
-    allowedMeshes = [focused.mesh, ...ringMeshes];
-  }
-
-  const intersects = raycaster.intersectObjects(allowedMeshes, true);
-  if (!intersects.length) {
-    // Clicked empty space — if in focus, clear it
-    clearFocus();
-    return;
-  }
-
-  const mesh = intersects[0].object;
-  const picked = orbitImages.find(o => o.mesh === mesh);
-  if (!picked) return;
-
-  if (focused && focused.mesh === mesh) {
-    // Clicking the focused image again — clear focus
-    clearFocus();
-    return;
-  }
-
-  // If we're in focus mode, we know picked is in the ring here
-  if (focusMode) {
-    // Switch focus to the clicked surrounding image
-    clearFocus();
-    focusImage(picked); // Move logic below into a reusable function
-    return;
-  }
-
-  // Not in focus mode — focus normally
-  focusImage(picked);
-}
-
-
+// ------------------- loop -------------------
 function onKey(e) {
   if (e.key === 'Escape') clearFocus();
 }
@@ -297,18 +329,16 @@ export function updateFocus(time) {
 
   if (!focusMode || ring.length === 0) return;
 
-  // delta time (ms -> s)
   if (!lastTime) lastTime = time;
   const dt = (time - lastTime) / 1000;
   lastTime = time;
 
   // keep center locked in front of camera (in case camera moves)
+  const { FOCUS_DISTANCE } = focusParams();
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   ringCenter.copy(camera.position).add(dir.multiplyScalar(FOCUS_DISTANCE));
 
-  // // advance ring and place
-  // ringAngle = (ringAngle + RING_SPEED * dt) % (Math.PI * 2);
   const currentSpeed = isHoveringRing ? HOVER_RING_SPEED : BASE_RING_SPEED;
   ringAngle = (ringAngle + currentSpeed * dt) % (Math.PI * 2);
   placeRing(ringAngle);
@@ -321,11 +351,10 @@ export function setupFocusInteraction({ scene: _scene, camera: _camera, renderer
   raycaster = new THREE.Raycaster();
   mouse = new THREE.Vector2();
 
-  dom.addEventListener('click', onClick);
-  dom.addEventListener('mousemove', onMouseMove);
+  // Pointer events only (works for mouse & touch); avoid double-firing with click/mousemove
+  dom.addEventListener('pointermove', onPointerMove, { passive: true });
+  dom.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('keydown', onKey);
-  dom.addEventListener('pointermove', onMouseMove, { passive: true });
-  dom.addEventListener('pointerdown', onClick);
 }
 
 export function isFocusMode() {

@@ -2,7 +2,22 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as THREE from 'three';
 
-// Mocks before imports
+// ✅ Mock window.Image early (imageLoader awaits onload)
+global.Image = class MockImage {
+  constructor() {
+    setTimeout(() => {
+      if (this.onload) this.onload();
+    }, 0);
+  }
+  set src(v) { this._src = v; }
+  get src() { return this._src; }
+  get width() { return 100; }
+  get height() { return 50; }
+  get naturalWidth() { return 100; }
+  get naturalHeight() { return 50; }
+};
+
+// --- Mocks before imports ---
 vi.mock('../src/supabaseClient.js', () => ({
   supabase: {
     from: () => ({
@@ -17,6 +32,7 @@ vi.mock('../src/supabaseClient.js', () => ({
   },
 }));
 
+// If anything calls TextureLoader, keep it harmless
 vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation((url, onLoad) => {
   const texture = {
     image: { width: 120, height: 100 },
@@ -31,16 +47,16 @@ vi.mock('../src/glbLoader.js', () => ({
   loadGLBFromURL: (url, scene, camera, cb = () => {}) => {
     const glbMesh = new THREE.Mesh(
       new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshBasicMaterial()
+      new THREE.MeshBasicMaterial() // depthWrite: true by default
     );
-    glbMesh.renderOrder = 0; // typical
+    glbMesh.renderOrder = 0;
     scene.add(glbMesh);
     cb(glbMesh);
     return Promise.resolve(glbMesh);
   },
 }));
 
-// Imports
+// --- Imports under test ---
 import { setupScene } from '../src/setupScene.js';
 import { setupCamera } from '../src/setupCamera.js';
 import { loadGLBFromURL } from '../src/glbLoader.js';
@@ -61,15 +77,24 @@ describe('Integration – render order & transparency contracts', () => {
     const glb = scene.children.find(c => c.isMesh && c.geometry?.type === 'BoxGeometry');
     expect(glb).toBeTruthy();
 
-    const photos = scene.children.filter(c => c.isSprite);
+    // 🔑 Only select images created by imageLoader:
+    // they are sprites with userData.basePx set in your loader.
+    const photos = scene.children.filter(
+      c => (c.isMesh || c.isSprite) && c.visible && c.userData?.basePx != null
+    );
+
     expect(photos.length).toBeGreaterThan(0);
 
-    // All photos should render in front (your loader sets renderOrder = 2)
+    // Images should render in front of the GLB
     const allFront = photos.every(p => (p.renderOrder ?? 0) >= (glb.renderOrder ?? 0));
     expect(allFront).toBe(true);
 
-    // Transparent images shouldn't write to depth (avoid holes)
+    // Transparent image materials shouldn’t write depth
     const noDepthWrites = photos.every(p => p.material && p.material.depthWrite === false);
     expect(noDepthWrites).toBe(true);
+
+    // And depthTest is disabled per your loader
+    const noDepthTest = photos.every(p => p.material && p.material.depthTest === false);
+    expect(noDepthTest).toBe(true);
   });
 });

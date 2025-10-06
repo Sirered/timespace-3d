@@ -1,64 +1,61 @@
 // resizeHandler.js
-import { orbitImages } from './imageLoader.js';
 import { reseedStarfield } from './starfield.js';
 
-function worldUnitsPerPixel(camera, pxW, pxH) {
-  const worldW = (camera.right - camera.left) / (camera.zoom || 1);
-  // Using width is fine for square sprites
-  return worldW / pxW;
-}
-
-export function setupResponsive({ scene, camera, renderer, backplates=null, debounceMs=120 }) {
-  let rafId = 0, timer = 0;
+export function setupResponsive({
+  scene,
+  camera,
+  renderer,
+  backplates = null,
+  debounceMs = 120,
+}) {
+  let rafId = 0;
+  let timer = 0;
 
   const apply = () => {
     const vw = window.visualViewport?.width  ?? window.innerWidth;
     const vh = window.visualViewport?.height ?? window.innerHeight;
 
-    // Resize renderer (no CSS scaling)
+    // 1) Resize renderer (no CSS scaling)
     renderer.setSize(vw, vh, false);
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    renderer.setPixelRatio(dpr);
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 
-    // Update ortho frustum to maintain logical "world height"
+    // 2) Update ortho frustum (preserve logical world height)
     const aspect = vw / vh;
-    const frustumSize = 10; // your base world height
-    camera.left   = -frustumSize * aspect / 2;
-    camera.right  =  frustumSize * aspect / 2;
-    camera.top    =  frustumSize / 2;
-    camera.bottom = -frustumSize / 2;
+    const FRUSTUM_SIZE = 10; // keep your base world height
+    camera.left   = -FRUSTUM_SIZE * aspect / 2;
+    camera.right  =  FRUSTUM_SIZE * aspect / 2;
+    camera.top    =  FRUSTUM_SIZE / 2;
+    camera.bottom = -FRUSTUM_SIZE / 2;
     camera.updateProjectionMatrix();
 
-    // Convert desired on-screen px → world units, scale sprites consistently
-    const wuPerPx = worldUnitsPerPixel(camera, vw, vh);
-    orbitImages.forEach(({ mesh }) => {
-      const basePx = mesh.userData.basePx ?? 110; // target size on phone
-      const s = basePx * wuPerPx;
-      mesh.scale.set(s, s, 1);
-    });
+    // ⚠️ DO NOT rescale sprites here.
+    // imageLoader already set world-space scales (uniform per orbit),
+    // and focusInteraction uses frustum-relative sizing on-the-fly.
 
-    // Update background plates
+    // 3) Backplates follow camera/frustum
     backplates?.update?.();
 
-    // Reseed stars so density stays constant at new zoom/aspect
+    // 4) Keep star density consistent
     reseedStarfield(scene);
   };
 
   const request = () => {
     cancelAnimationFrame(rafId);
     clearTimeout(timer);
-    // a short debounce avoids double work on orientation changes
-    timer = setTimeout(() => { rafId = requestAnimationFrame(apply); }, debounceMs);
+    timer = setTimeout(() => {
+      rafId = requestAnimationFrame(apply);
+    }, debounceMs);
   };
 
-  // hook multiple sources of size change
+  // Listen to all ways the viewport can change
   window.addEventListener('resize', request);
   window.visualViewport?.addEventListener('resize', request);
   window.addEventListener('orientationchange', request);
 
-  // run once now
+  // Run once at startup
   apply();
 
+  // Cleanup
   return () => {
     window.removeEventListener('resize', request);
     window.visualViewport?.removeEventListener('resize', request);

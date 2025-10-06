@@ -1,6 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as THREE from 'three';
 
+// ✅ Mock window.Image early
+global.Image = class MockImage {
+  constructor() {
+    setTimeout(() => {
+      if (this.onload) this.onload();
+    }, 0);
+  }
+  set src(v) { this._src = v; }
+  get src() { return this._src; }
+  get width() { return 100; }
+  get height() { return 50; }
+  get naturalWidth() { return 100; }
+  get naturalHeight() { return 50; }
+};
+
 // Mock Supabase
 vi.mock('../src/supabaseClient.js', () => ({
   supabase: {

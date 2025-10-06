@@ -27,7 +27,9 @@ function clickCanvas(canvas, camera, world) {
   const v = world.clone().project(camera);
   const x = (v.x * 0.5 + 0.5) * r.width;
   const y = (-v.y * 0.5 + 0.5) * r.height;
-  canvas.dispatchEvent(new MouseEvent('click', { clientX: x, clientY: y, bubbles: true }));
+  canvas.dispatchEvent(new MouseEvent('pointerdown', {
+    clientX: x, clientY: y, bubbles: true
+  }));
 }
 
 describe('focusInteraction — integration', () => {

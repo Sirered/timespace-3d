@@ -3,6 +3,20 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as THREE from 'three';
 
 // --- Mocks MUST come before importing modules that depend on them ---
+// ✅ Mock window.Image early
+global.Image = class MockImage {
+  constructor() {
+    setTimeout(() => {
+      if (this.onload) this.onload();
+    }, 0);
+  }
+  set src(v) { this._src = v; }
+  get src() { return this._src; }
+  get width() { return 100; }
+  get height() { return 50; }
+  get naturalWidth() { return 100; }
+  get naturalHeight() { return 50; }
+};
 
 // Mock Supabase client used by image loader
 vi.mock('../src/supabaseClient.js', () => ({
