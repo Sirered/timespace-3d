@@ -19,33 +19,41 @@ export function animate(scene, camera, renderer, updateStarfield = () => {}, con
         logged = true;
       }
 
-      orbitImages.forEach((imgData, i) => {
-        const angle = imgData.angle + t * 0.5 + (i * 0.35);
-        const orbitR = imgData.orbitRadius ?? 10;
+      orbitImages.forEach((imgData) => {
+        const { mesh } = imgData;
+        if (!mesh?.visible) return;               // <- skip hidden items
 
         if (hasLogoPath()) {
-          const tParam = (now * 0.00005 * (imgData.speed ?? 0.15) + (imgData.phase ?? i / orbitImages.length)) % 1;
-          const count = Math.max(1, getPathsCount());
-          const pathIdx = imgData.orbitBand % count; // wrap to available paths
+          // deterministic motion: fixed per-orbit speed + equal phase spacing
+          const speed  = imgData.speed ?? 0.6;    // set in loader (SPEED_TOP/BOTTOM)
+          const phase  = imgData.phase ?? 0;      // set in loader: i / n
+          const tParam = (now * 0.00005 * speed + phase) % 1;
+
+          const count   = Math.max(1, getPathsCount());
+          const pathIdx = imgData.orbitBand % count;
+
           const p = getPointOnLogoPath(tParam, {
             pathIndex: pathIdx,
-            xOffset: (imgData.offsetX ?? -2.0),
+            xOffset:   imgData.offsetX ?? -2.0,
           });
+
           if (p) {
-            p.y += (imgData.yLift ?? 0) + Math.sin(t + i) * 0.3;
+            // gentle secondary motion
+            p.y += (imgData.yLift ?? 0) + Math.sin(t + phase * 10.0) * 0.3;
             p.z += (imgData.zChange ?? 0);
-            imgData.mesh.position.copy(p);
+            mesh.position.copy(p);
           }
         } else {
-          // fallback: old circular orbit
-          const rawX = Math.cos(angle) * orbitR;
-          const rawZ = Math.sin(angle) * orbitR;
-          const rawY = Math.sin(angle) * orbitR * 0.5;
-          const y = rawY + imgData.verticalOffset + Math.sin(t + i) * 0.5;
-          imgData.mesh.position.set(rawX, y, rawZ);
+          // Fallback circle if paths missing
+          const a = (imgData.phase ?? 0) * Math.PI * 2 + t * (imgData.speed ?? 0.6);
+          const r = imgData.orbitRadius ?? 10;
+          const x = Math.cos(a) * r;
+          const z = Math.sin(a) * r;
+          const y = Math.sin(a) * (r * 0.5) + (imgData.verticalOffset ?? 0);
+          mesh.position.set(x, y, z);
         }
 
-        imgData.mesh.lookAt(camera.position);
+        mesh.lookAt(camera.position);
       });
     }
 

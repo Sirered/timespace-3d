@@ -243,7 +243,19 @@ function _applyUniformWorldHeight(list, worldH) {
 
 // set equal spacing and per-orbit speed for a "visible" subset; hide others
 function _layoutOrbit(listAll, visibleSubset, speed) {
-  const n = Math.max(1, visibleSubset.length);
+  const n = (visibleSubset?.length ?? 0);
+
+  // Nothing to show in this band: hide all and bail early
+  if (n === 0) {
+    for (const e of listAll) {
+      e.mesh.visible = false;
+      e.speed = speed;
+      e.phase = 0;
+      e.bandIndex = 0;
+      e.bandCount = 0;
+    }
+    return;
+  }
   // keep a deterministic order within the chosen subset (optional: by file_name/uuid)
   visibleSubset.sort((a, b) => {
     const sa = a.record?.file_name || a.mesh.uuid;
