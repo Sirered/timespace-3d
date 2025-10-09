@@ -1,13 +1,24 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background:#0c0f13; }
+  canvas { display:block; width:100dvw; height:100dvh; touch-action:none; }
+  /* Avoid iOS pull-to-refresh and bounce */
+  body { overscroll-behavior: none; }
+  /* Respect notches */
+  .safe { padding: env(safe-area-inset-top) env(safe-area-inset-right)
+                    env(safe-area-inset-bottom) env(safe-area-inset-left); }
+</style>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vite App</title>
   </head>
   <body>
-    <canvas id = "bg"></canvas>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

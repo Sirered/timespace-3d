@@ -1,14 +1,27 @@
-// setupRenderer.js
 import * as THREE from 'three';
 
 function setupRenderer() {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  const canvas = document.createElement('canvas');
+
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: false,
+    powerPreference: 'high-performance'
+  });
+
+  const vw = window.visualViewport?.width  ?? window.innerWidth;
+  const vh = window.visualViewport?.height ?? window.innerHeight;
+  renderer.setSize(vw, vh, false);
+
+  // Cap DPR on mobile to keep GPU cost reasonable
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  renderer.setPixelRatio(dpr);
+
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1;
+  renderer.toneMappingExposure = 1.0;
+  renderer.physicallyCorrectLights = true;
 
   document.body.appendChild(renderer.domElement);
   return renderer;
