@@ -71,9 +71,9 @@ async function init() {
   await initStarfield(scene, {
     camera,                // REQUIRED for slab mode
     mode: 'slab',          // default
-    count: 5000,           // fewer points; most will be on-screen
-    viewMult: 1.4,         // expand beyond viewport a bit
-    depthOffsets: [20, 30, 50], // 3 layers
+    count: 5000,           
+    viewMult: 1.4,         
+    depthOffsets: [20, 30, 50], // 3 layers of stars, the integer values convey the depth offset of each layer
     bigSpriteDepth: -12,
     bigTwinkleCount: 50,
     sizeMult: 1.1,
