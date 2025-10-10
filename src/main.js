@@ -115,7 +115,7 @@ async function init() {
 
   // --- Content ---
   await loadImagesFromSupabase(scene);
-  setupFocusInteraction({ scene, camera, renderer });
+  setupFocusInteraction({ scene, camera, renderer, controls });
 
 
   const MOBILE_SAFE_SHRINK = 0.86; // try 0.80–0.90 if you want more/less room
