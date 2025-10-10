@@ -85,6 +85,7 @@ src/
 ├── resizeHandler.js        # Adjusts renderer and camera on resize
 ├── postfx.js               # Bloom, vignette, film grain
 ├── supabaseClient.js       # Supabase client (swap this to change backends)
+├── logoPath.js             # Builds two smoothed closed orbits and exposes arc-length sampling
 ```
 ---
 
@@ -118,6 +119,32 @@ Drives the render loop, starfield updates, orbit positions, focus states, and Ef
 
 ### `setupLights.js`
 Balanced lighting: ambient + directional key/fill/rim + hemisphere.
+
+### `logoPath.js`
+
+**Purpose**  
+Build **two smoothed, closed orbits** from the loaded GLB and provide **arc-length–uniform sampling** along these paths for constant-speed animation. The module also supports a small local **x-offset** to separate layers/parallax. :contentReference[oaicite:4]{index=4}
+
+**How it works**  
+- Traverses all meshes in the GLB, computes each mesh’s **world-space bounding-box center Y**, then sorts meshes **top → bottom**.  
+- **Selects the 3rd and 5th meshes** by this vertical order to form two orbits (design choice).  
+- Extracts world-space vertex positions, applies a **moving-average smoothing (window=12)**, and builds **centripetal Catmull–Rom** closed curves with **tension=0.05**.  
+- Increases `arcLengthDivisions` to **2000** and precomputes lengths to stabilize `getPointAt` speed.  
+- If fewer than **5** meshes exist, the builder logs a warning and skips.  
+- Optional debug line rendering is present but commented out in the source. :contentReference[oaicite:5]{index=5}
+
+**Public API**
+```ts
+hasLogoPath(index?: number): boolean
+getPathsCount(): number
+getPointOnLogoPath(
+  t: number,
+  opts?: { pathIndex?: 0 | 1; xOffset?: number }
+): THREE.Vector3 | null
+setLogoFixedPathsFromModel(
+  model: THREE.Object3D,
+  scene?: THREE.Scene
+): void
 
 ---
 
@@ -213,7 +240,33 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 - `file_name` is expected to be a **full public URL** to the image.
 - If your bucket isn’t public, adapt the loader to request **signed URLs**.
 
-### 5) Using a different backend / hosting
+### 5) Using logoPath
+
+```js
+import { setLogoFixedPathsFromModel, getPointOnLogoPath, getPathsCount } from './logoPath.js';
+import { loadGLBFromURL } from './glbLoader.js';
+
+// Build orbits after the GLB is loaded
+loadGLBFromURL('/TextureFixed-5.glb', scene, camera, (model) => {
+  setLogoFixedPathsFromModel(model, scene);
+  console.log('orbits ready:', getPathsCount()); // → 2
+});
+
+// In your animation loop
+function tick(tSec) {
+  const uTop = (tSec * 1.2) % 1;
+  const uBottom = (tSec * 0.5) % 1;
+
+  const pTop = getPointOnLogoPath(uTop, { pathIndex: 0 });
+  const pBottom = getPointOnLogoPath(uBottom, { pathIndex: 1, xOffset: 0.1 });
+
+  // spriteTop.position.copy(pTop);
+  // spriteBottom.position.copy(pBottom);
+}
+```
+getPointOnLogoPath uses getPointAt (arc-length). X is the only axis shifted by xOffset.
+
+### 6) Using a different backend / hosting
 
 If you don’t want to use Supabase:
 
