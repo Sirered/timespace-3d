@@ -118,7 +118,7 @@ async function init() {
   setupFocusInteraction({ scene, camera, renderer, controls });
 
 
-  const MOBILE_SAFE_SHRINK = 0.86; // try 0.80–0.90 if you want more/less room
+  const MOBILE_SAFE_SHRINK = 0.86; 
 
   loadGLBFromURL('/TextureFixed-5.glb', scene, camera, () => {
     console.log('glb file loaded successfully');
@@ -129,7 +129,6 @@ async function init() {
       // await reseedStarfield(scene);
     }
   }, {
-    // tighter mobile framing so the whole shape stays in view
     ...(isPhone ? {
       fillK: 0.52,        // was 0.60
       framingZoom: 0.72,  // was 0.80
