@@ -1,17 +1,23 @@
 # TIMELab / TIMESpace 3D Gallery Documentation
 
-This project is a 3D infinite-orbiting gallery designed to showcase images from Supabase alongside a GLB model. It provides an immersive space-like environment with animated starfields, orbiting images, and interactive focus features.
+This project is a 3D infinite-orbiting gallery designed to showcase images (from Supabase) alongside a GLB model. It provides an immersive space-like environment with animated starfields, orbiting images, and interactive focus features.
+
+> **Stack highlights**
+> - **Three.js** for rendering (orthographic camera).
+> - **Supabase** for storage/table access (can be swapped—see “Using a different backend”).
+> - **Vite** (or any ES-module bundler). Env vars are read via `import.meta.env`.
 
 ---
 
 ## Overview
 
-The gallery works by combining several modular components:
+The gallery combines several modular components:
+
 - **Scene setup**: Initializes Three.js rendering, camera, and lights.
 - **Starfield background**: Procedurally generated star layers that orbit relative to the camera.
 - **Image loader**: Fetches image records from Supabase and places them on orbiting paths around the GLB model.
-- **Focus interaction**: Allows clicking an image to center it, pausing orbiting, and then releasing it back smoothly.
-- **Post-processing**: Bloom, vignette, and film grain effects create a cinematic presentation.
+- **Focus interaction**: Clicking an image centers it, pauses orbiting, and then releases it back smoothly.
+- **Post-processing**: Bloom, vignette, and film grain effects for a cinematic presentation.
 
 ---
 
@@ -19,25 +25,46 @@ The gallery works by combining several modular components:
 
 ### Dependencies
 
-Install the required dependencies via npm:
+Install dependencies:
 
 ```bash
 npm install three @supabase/supabase-js
 ```
 
-Optional (if using shaders or postprocessing):
+Example imports:
 
-```bash
-npm install three/examples/jsm
+```js
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader }  from 'three/examples/jsm/loaders/GLTFLoader.js';
 ```
 
-### Supabase
+### Required environment (.env.local)
 
-The project uses a Supabase table `imagerecord` with the following fields:
-- `file_name` (string) → full public URL to the image
-- `people` (JSON object) → metadata for filtering and grouping
+This implementation **uses Supabase**. Create a `.env.local` in the project root (Vite will load this; do **not** commit it):
 
-Supabase client is configured in `supabaseClient.js`.
+```bash
+# .env.local
+VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+VITE_PUBLIC_SUPABASE_BUCKET=your-bucket-name
+```
+
+- **Where to find URL & anon key**: Supabase Dashboard → **Connect → App Framework**.  
+  Use the **anon (public) key**.
+- **`VITE_PUBLIC_SUPABASE_BUCKET`**: the **Storage bucket** that contains your images (e.g., `timelab-gallery`).  
+- Vite only exposes variables prefixed with `VITE_`. Access them via `import.meta.env.*`.
+- After changing env vars, **restart** your dev server.
+
+### Supabase schema expectations
+
+The project reads from a Supabase table named **`imagerecord`**:
+
+- `file_name` *(text)* – **full public URL** to the image (e.g., a public bucket URL).
+- `people` *(JSONB)* – metadata for filtering/grouping (populated by your ML pipeline).
+
+The Supabase client is created in `supabaseClient.js`.
+
+> If you plan to switch away from Supabase, see **“Using a different backend”**.
 
 ---
 
@@ -45,86 +72,117 @@ Supabase client is configured in `supabaseClient.js`.
 
 ```
 src/
-├── main.js                 # Entry point, initializes scene, camera, renderer, and controls
+├── main.js                 # Entry point, initializes scene, camera, renderer, controls
 ├── setupScene.js           # Configures base Three.js scene
 ├── setupCamera.js          # Orthographic camera setup
 ├── setupRenderer.js        # Renderer initialization with color settings
-├── setupLights.js          # Ambient, key, fill, and rim lights
+├── setupLights.js          # Ambient, key, fill, rim, hemisphere lights
 ├── starfield.js            # Generates and updates the star background
-├── supabaseImageLoader.js  # Loads images from Supabase, maps textures to meshes, pushes to orbitImages
-├── focusInteraction.js     # Handles click-to-focus interactions
-├── animate.js              # Main animation loop, handles orbiting, updates, and rendering
+├── imageLoader.js          # Loads images from Supabase, maps textures to sprites, orbits them
+├── focusInteraction.js     # Click-to-focus / release interactions
+├── animate.js              # Main animation loop, orbit updates, rendering
 ├── glbLoader.js            # Loads and frames GLB models
 ├── resizeHandler.js        # Adjusts renderer and camera on resize
-├── postfx.js               # Postprocessing effects (bloom, vignette, film grain)
+├── postfx.js               # Bloom, vignette, film grain
+├── supabaseClient.js       # Supabase client (swap this to change backends)
+├── logoPath.js             # Builds two smoothed closed orbits and exposes arc-length sampling
 ```
-
 ---
 
 ## Key Components
 
 ### `main.js`
-The application entry point. It:
 1. Creates scene, camera, renderer, and controls.
 2. Adds starfield and lights.
-3. Loads Supabase images and GLB model.
+3. Loads Supabase images and a GLB model.
 4. Sets up post-processing.
-5. Runs animation loop (`animate.js`).
-6. Starts with intro zoom effect.
+5. Runs the animation loop (`animate.js`).
+6. Plays an intro zoom.
 
 ### `starfield.js`
-Generates stars in layered slabs, twinkling and moving with the camera. Creates parallax depth.
+Generates stars in layered “slabs” that twinkle and parallax with camera motion.
 
-### `supabaseImageLoader.js`
-Fetches images from Supabase and maps them as textured planes orbiting the GLB model. Images maintain correct aspect ratios, transparency, and orbit paths.
+### `imageLoader.js`
+Fetches images from Supabase and maps them as **Sprites** that orbit the 3D model.  
 
 ### `focusInteraction.js`
-Enables users to click an image:
-- Selected image moves to the center.
-- Orbiting pauses.
-- On release, the image transitions back to its orbit position.
+- Click an image → it animates the clicked image to the center and orbiting pauses.
+- Release → image returns to its orbit position.
 
 ### `animate.js`
-Controls the render loop. Updates starfield, orbit positions, focus states, and runs rendering through either a renderer or EffectComposer.
+Drives the render loop, starfield updates, orbit positions, focus states, and EffectComposer pass when enabled.
 
 ### `postfx.js`
-Adds cinematic enhancements:
-- **UnrealBloomPass** → glows around bright edges.
-- **VignetteShader** → subtle darkening at edges to center focus.
-- **FilmPass** → faint film grain.
+- **UnrealBloomPass** – subtle glow
+- **Vignette** – edge darkening
+- **FilmPass** – light grain
 
 ### `setupLights.js`
-Lighting designed for balanced visibility:
-- Ambient light for global illumination.
-- Directional key, fill, and rim lights for contrast.
-- Hemisphere light for environmental balance.
+Balanced lighting: ambient + directional key/fill/rim + hemisphere.
+
+### `logoPath.js`
+
+**Purpose**  
+Build **two smoothed, closed orbits** from the loaded GLB and provide **arc-length–uniform sampling** along these paths for constant-speed animation. The module also supports a small local **x-offset** to separate layers/parallax. :contentReference[oaicite:4]{index=4}
+
+**How it works**  
+- Traverses all meshes in the GLB, computes each mesh’s **world-space bounding-box center Y**, then sorts meshes **top → bottom**.  
+- **Selects the 3rd and 5th meshes** by this vertical order to form two orbits (design choice).  
+- Extracts world-space vertex positions, applies a **moving-average smoothing (window=12)**, and builds **centripetal Catmull–Rom** closed curves with **tension=0.05**.  
+- Increases `arcLengthDivisions` to **2000** and precomputes lengths to stabilize `getPointAt` speed.  
+- If fewer than **5** meshes exist, the builder logs a warning and skips.  
+- Optional debug line rendering is present but commented out in the source. :contentReference[oaicite:5]{index=5}
+
+**Public API**
+```ts
+hasLogoPath(index?: number): boolean
+getPathsCount(): number
+getPointOnLogoPath(
+  t: number,
+  opts?: { pathIndex?: 0 | 1; xOffset?: number }
+): THREE.Vector3 | null
+setLogoFixedPathsFromModel(
+  model: THREE.Object3D,
+  scene?: THREE.Scene
+): void
 
 ---
 
 ## Configuration Options
 
-- **Starfield (`initStarfield`)**:
-  - `count`: number of stars
-  - `depthOffsets`: layer depth positions
-  - `brightness`, `sizeMult`, `maxSizePx`: adjust star visuals
+### Environment (required)
+Set in `.env.local`:
 
-- **Image Loader**:
-  - Mesh material can be swapped between `MeshStandardMaterial` (matte) or `MeshPhysicalMaterial` (glossy).
-  - Orbit radius and offsets configurable.
+- `VITE_SUPABASE_URL` – Supabase project URL (**Connect → App Framework**).
+- `VITE_SUPABASE_ANON_KEY` – public client key (**Connect → App Framework**).
+- `VITE_PUBLIC_SUPABASE_BUCKET` – Storage bucket holding image assets.
 
-- **Focus Interaction**:
-  - Transition durations and easing functions adjustable.
+### Starfield (`initStarfield`)
+- `count` – total stars  
+- `depthOffsets` – z-offsets for each star layer  
+- `brightness`, `sizeMult`, `maxSizePx` – visual tuning  
+- `viewMult`, `bigSpriteDepth`, `bigTwinkleCount` – parallax & accent stars
 
-- **PostFX**:
-  - Bloom strength, vignette intensity, and film grain can be tuned in `setupPostFX`.
+### Image Loader
+- Material can be `SpriteMaterial` (default) using SRGB textures.
+- Per-orbit uniform **world height**, configurable **orbit radius**, **speed**, and **visible count**.
+- Large images can use face-centered cover crops; smaller images keep original pixels.
+- **Reshuffle** interval to swap which sprites are visible per band.
+
+### Focus Interaction
+- Transition durations and easing functions are adjustable.
+
+### PostFX (`setupPostFX`)
+- Bloom strength, vignette darkness, and film grain noise are tunable.
 
 ---
 
 ## Usage
 
-Start the project with a local dev server:
+### 1) Install & run
 
 ```bash
+npm install
 npm run dev
 ```
 
@@ -134,11 +192,137 @@ Build for production:
 npm run build
 ```
 
-The gallery will render full screen in your browser.
+> The gallery renders full-screen in your browser.
+
+### 2) Create `.env.local`
+
+Add the three variables:
+
+```bash
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_PUBLIC_SUPABASE_BUCKET=...
+```
+
+Restart `npm run dev` after changes.
+
+### 3) Swap the GLB model (optional)
+
+- Put your new `.glb` into the **`public/`** folder.  
+- Update the loader call in `main.js`:
+
+```ts
+// before
+loadGLBFromURL('/TextureFixed-5.glb', scene, camera, () => {
+
+// after (example)
+loadGLBFromURL('/MyScene.glb', scene, camera, () => {
+```
+The path is relative to `/public`, so `/MyScene.glb` becomes `public/MyScene.glb`.
+
+### 4) Using Supabase (default)
+
+`supabaseClient.js`:
+
+```js
+// supabaseClient.js
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
+```
+
+`imageLoader.js` (excerpt):
+
+- Reads from `imagerecord (file_name, people)`.
+- `file_name` is expected to be a **full public URL** to the image.
+- If your bucket isn’t public, adapt the loader to request **signed URLs**.
+
+### 5) Using logoPath
+
+```js
+import { setLogoFixedPathsFromModel, getPointOnLogoPath, getPathsCount } from './logoPath.js';
+import { loadGLBFromURL } from './glbLoader.js';
+
+// Build orbits after the GLB is loaded
+loadGLBFromURL('/TextureFixed-5.glb', scene, camera, (model) => {
+  setLogoFixedPathsFromModel(model, scene);
+  console.log('orbits ready:', getPathsCount()); // → 2
+});
+
+// In your animation loop
+function tick(tSec) {
+  const uTop = (tSec * 1.2) % 1;
+  const uBottom = (tSec * 0.5) % 1;
+
+  const pTop = getPointOnLogoPath(uTop, { pathIndex: 0 });
+  const pBottom = getPointOnLogoPath(uBottom, { pathIndex: 1, xOffset: 0.1 });
+
+  // spriteTop.position.copy(pTop);
+  // spriteBottom.position.copy(pBottom);
+}
+```
+getPointOnLogoPath uses getPointAt (arc-length). X is the only axis shifted by xOffset.
+
+### 6) Using a different backend / hosting
+
+If you don’t want to use Supabase:
+
+1. **Create your own client** (or wrapper) by updating **`supabaseClient.js`** to export an object the app can call (or rename it and adjust imports).  
+   It should provide whatever minimal methods your `imageLoader` expects (e.g., `list`, `getPublicUrl`, or a `fetchRecords()` function).
+2. **Update `imageLoader.js`** to use your provider:
+   - Replace calls to `supabase.from('imagerecord').select(...)` with your API calls.
+   - If you store **paths** instead of full URLs, build public/signed URLs accordingly (e.g., S3/GCS).
+3. Keep `VITE_PUBLIC_SUPABASE_BUCKET` semantics by mapping it to your storage container/bucket name, or replace its usage with your own env var.
 
 ---
 
-## Notes
-- The project is modular: each file handles one responsibility.
-- Postprocessing is optional and can be disabled for performance.
-- Supabase provides the data source for orbiting images, but you can adapt `supabaseImageLoader.js` to other APIs.
+## Notes & Tips
+
+- The code uses `import.meta.env.*` (Vite). If you switch bundlers, ensure env variables are still injected at build time.
+- For public buckets, enable read policies or expose a CDN/public base URL.
+- If no images appear:
+  - Verify `imagerecord.file_name` values are valid, publicly accessible URLs.
+  - Check CORS on your storage host.
+  - Open DevTools → Network/Console for failed requests.
+- Post-processing can be disabled for performance-constrained devices.
+
+---
+
+## File References (for convenience)
+
+**`supabaseClient.js`**
+
+```js
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
+```
+
+**`imageLoader.js`** *(excerpt – fetch images)*
+
+```js
+import { supabase } from './supabaseClient.js';
+
+export async function loadImagesFromSupabase(scene) {
+  const { data, error } = await supabase
+    .from('imagerecord')
+    .select('file_name, people');
+  // ... map to sprites, set orbits, reshuffle, etc.
+}
+```
+
+**`main.js`** *(excerpt – swap GLB path here)*
+
+```js
+import { loadGLBFromURL } from './glbLoader.js';
+
+loadGLBFromURL('/TextureFixed-5.glb', scene, camera, () => {
+  console.log('glb file loaded successfully');
+});
+```

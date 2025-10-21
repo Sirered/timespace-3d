@@ -42,7 +42,7 @@ function clamp(v, lo, hi) {
 // ----- layer builders -----
 function makePointsLayer_Slab({
   count, sizePx, baseOpacity, tint, sprite, viewMult, depthOffset,
-  camera, addTo, debugNoDepth, DPR, maxSizePx
+  camera, addTo, debugNoDepth, DPR, maxSizePx, pixelScale = 1
 }) {
   const { width, height } = orthoViewSize(camera);
   const { dir, up, right } = cameraBasis(camera);
@@ -88,7 +88,7 @@ function makePointsLayer_Slab({
     blending: THREE.AdditiveBlending,
     depthTest: !debugNoDepth,
     depthWrite: false,
-    size: clamp(sizePx * DPR, 1, maxSizePx * DPR),   // cap size
+    size: clamp(sizePx * DPR * pixelScale, 1, maxSizePx * DPR * pixelScale),
     sizeAttenuation: false,                          // ortho-friendly
     opacity: baseOpacity,
   });
@@ -304,6 +304,9 @@ export async function initStarfield(
     // shell options
     innerRadius = 120,
     depth = 30,
+
+    pixelScale = 1,
+    dprCap = 3,
   } = {}
 ) {
   // keep references/options for reseeding
@@ -339,7 +342,7 @@ export async function initStarfield(
     )
   );
 
-  const DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  const DPR = Math.max(1, Math.min(dprCap, window.devicePixelRatio || 1));
 
   // split counts (small/mid/big points)
   const n1 = Math.floor(count * 0.70);
@@ -361,7 +364,7 @@ export async function initStarfield(
           baseOpacity: Math.min(1, 0.85 * brightness),
           tint: 0x9ecbff,
           sprite, viewMult, depthOffset: d,
-          camera: _camera, addTo: group, debugNoDepth, DPR, maxSizePx
+          camera: _camera, addTo: group, debugNoDepth, DPR, maxSizePx, pixelScale
         })
       );
       pointLayers.push(
@@ -371,7 +374,7 @@ export async function initStarfield(
           baseOpacity: Math.min(1, 1.00 * brightness),
           tint: 0xfff1cf,
           sprite, viewMult, depthOffset: d,
-          camera: _camera, addTo: group, debugNoDepth, DPR, maxSizePx
+          camera: _camera, addTo: group, debugNoDepth, DPR, maxSizePx, pixelScale
         })
       );
       pointLayers.push(
@@ -381,7 +384,7 @@ export async function initStarfield(
           baseOpacity: Math.min(1, 1.00 * brightness),
           tint: 0xffffff,
           sprite, viewMult, depthOffset: d,
-          camera: _camera, addTo: group, debugNoDepth, DPR, maxSizePx
+          camera: _camera, addTo: group, debugNoDepth, DPR, maxSizePx, pixelScale
         })
       );
     }

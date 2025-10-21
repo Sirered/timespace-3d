@@ -67,43 +67,92 @@ async function init() {
 
   setupLights(scene);
 
-  // main.js (snippet)
-  await initStarfield(scene, {
-    camera,                // REQUIRED for slab mode
-    mode: 'slab',          // default
-    count: 5000,           // fewer points; most will be on-screen
-    viewMult: 1.4,         // expand beyond viewport a bit
-    depthOffsets: [20, 30, 50], // 3 layers
-    bigSpriteDepth: -12,
-    bigTwinkleCount: 50,
+  const isPhone  = window.matchMedia('(max-width: 640px)').matches;
+  const isTablet = window.matchMedia('(max-width: 1024px)').matches && !isPhone;
+
+  const STAR_CFG = isPhone ? {
+    // smaller, dimmer, fewer — and farther back
+    count: 1400,
+    viewMult: 1.15,
+    depthOffsets: [35, 55, 85],
+    sizeMult: 0.85,
+    maxSizePx: 5,
+    brightness: 0.9,
+    pixelScale: 0.65, // NEW (from starfield.js)
+    dprCap: 1.5,
+    bigTwinkleCount: 0
+  } : isTablet ? {
+    count: 2600,
+    viewMult: 1.30,
+    depthOffsets: [25, 40, 65],
+    sizeMult: 1.0,
+    maxSizePx: 8,
+    brightness: 1.05,
+    pixelScale: 0.85,
+    dprCap: 1.75,
+    bigTwinkleCount: 20
+  } : {
+    count: 3600,
+    viewMult: 1.35,
+    depthOffsets: [20, 30, 50],
     sizeMult: 1.1,
-    maxSizePx: 12,         // hard cap so none get huge
-    brightness: 1.2,
+    maxSizePx: 10,
+    brightness: 1.1,
+    pixelScale: 1.0,
+    dprCap: 2.0,
+    bigTwinkleCount: 40
+  };
+
+  await initStarfield(scene, {
+    camera,
+    mode: 'slab',
+    bigSpriteDepth: -12,
     // debugNoDepth: true,
+    ...STAR_CFG
   });
 
 
 
   // --- Content ---
   await loadImagesFromSupabase(scene);
-  setupFocusInteraction({ scene, camera, renderer });
+  setupFocusInteraction({ scene, camera, renderer, controls });
 
+
+  const MOBILE_SAFE_SHRINK = 0.86; 
 
   loadGLBFromURL('/TextureFixed-5.glb', scene, camera, () => {
-  console.log('glb file loaded successfully');
+    console.log('glb file loaded successfully');
+    if (isPhone) {
+      camera.zoom *= MOBILE_SAFE_SHRINK;
+      camera.updateProjectionMatrix();
+      // if you imported reseedStarfield, call it so the slab wraps to the new zoom:
+      // await reseedStarfield(scene);
+    }
   }, {
-    fillK: 0.8,
-    topMarginFrac: -0.15,   // -15% of view height (stable)
-    pushZ: 0,
-    framingZoom: 1.0        // <-- frame for the final zoom
+    ...(isPhone ? {
+      fillK: 0.52,        // was 0.60
+      framingZoom: 0.72,  // was 0.80
+      topMarginFrac: -0.05,
+      pushZ: 0
+    } : isTablet ? {
+      fillK: 0.68,        // slightly smaller than before
+      framingZoom: 0.88,
+      topMarginFrac: -0.10,
+      pushZ: 0
+    } : {
+      fillK: 0.78,        // desktop still close, but a hair more room
+      framingZoom: 0.98,
+      topMarginFrac: -0.15,
+      pushZ: 0
+    })
   });
 
-  const composer = setupPostFX(renderer, scene, camera, {
-  bloomStrength: 0.25,
-  vignetteDarkness: 0.35,
-  filmNoise: 0.03,
-});
-
+  const composer = setupPostFX(
+    renderer, scene, camera,
+    isPhone
+      ? { bloomStrength: 0.18, vignetteDarkness: 0.30, filmNoise: 0.02 }
+      : { bloomStrength: 0.25, vignetteDarkness: 0.35, filmNoise: 0.03 }
+  );
 
 
 
@@ -115,8 +164,8 @@ async function init() {
 
   introZoom(camera, controls, {
     duration: 500,
-    from: 0.06, // how far out you want to start
-    to: 1.0     // your normal zoom
+    from: 0.06, 
+    to: isPhone ? 0.85 : 1.0
   });
 }
 

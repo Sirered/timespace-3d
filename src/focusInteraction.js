@@ -32,7 +32,7 @@ function cancelTweensFor(obj) {
 }
 // ----------------------------------------------------------
 
-let raycaster, mouse, dom, camera, scene;
+let raycaster, mouse, dom, camera, scene, controls;
 let focusMode = false;
 let focused = null;
 let ring = [];
@@ -257,8 +257,12 @@ export function clearFocus(opts = {}) {
     focused = null;
   }
 
-  undimAll();
-  orbitImages.forEach(({ mesh }) => { if (mesh) mesh.renderOrder = ORDER_BG; });
+    undimAll();
+    orbitImages.forEach(({ mesh }) => {
+      if (mesh) mesh.renderOrder = ORDER_BG;
+    });
+  
+  if (controls) controls.enabled = true;
 }
 
 function focusImage(picked) {
@@ -273,6 +277,7 @@ function focusImage(picked) {
 
   // selected goes to center
   moveInFrontOfCamera(picked.mesh);
+  if (controls) controls.enabled = false;
 
   const related = orbitImages
     .filter(o => o.mesh?.visible && o.mesh !== picked.mesh && isRelated(picked.record, o.record))
@@ -346,9 +351,10 @@ export function updateFocus(time) {
   placeRing(ringAngle);
 }
 
-export function setupFocusInteraction({ scene: _scene, camera: _camera, renderer }) {
+export function setupFocusInteraction({ scene: _scene, camera: _camera, renderer, controls: _controls }) {
   scene = _scene;
   camera = _camera;
+  controls = _controls || null;
   dom = renderer.domElement;
   raycaster = new THREE.Raycaster();
   mouse = new THREE.Vector2();
