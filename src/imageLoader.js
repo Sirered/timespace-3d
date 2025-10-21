@@ -1,3 +1,4 @@
+// imageLoader.js
 import * as THREE from 'three';
 import { supabase } from './supabaseClient.js';
 
@@ -6,6 +7,11 @@ const _texCache = new Map();
 
 // ===== shuffle timer guard (avoid duplicates across reloads) =====
 let _shuffleTimer = null;
+
+// check global freeze flag set by focusInteraction.js
+function _isFrozen() {
+  return (typeof window !== 'undefined') && !!window.__freezeOrbitShuffle;
+}
 
 /* ===================== Tunables ===================== */
 // Target pixels for processed LARGE images (only used to make textures; small images are never upscaled)
@@ -270,9 +276,9 @@ export async function loadImagesFromSupabase(scene) {
       premultipliedAlpha: false,
     });
     
-      const mesh = new THREE.Sprite(material);
-      mesh.userData.basePx = 110;  // tweak 90–130 for phone, 140–180 for tablet
-      mesh.renderOrder = 5;
+    const mesh = new THREE.Sprite(material);
+    mesh.userData.basePx = 110;  // tweak 90–130 for phone, 140–180 for tablet
+    mesh.renderOrder = 5;
 
     scene.add(mesh);
 
@@ -334,6 +340,9 @@ export async function loadImagesFromSupabase(scene) {
     _shuffleTimer = null;
   }
   _shuffleTimer = setInterval(() => {
+    // freeze random reshuffle while focused
+    if (_isFrozen()) return;
+
     try {
       const topVisible = _selectRandom(topList, MAX_VISIBLE_PER_ORBIT);
       const botVisible = _selectRandom(bottomList, MAX_VISIBLE_PER_ORBIT);
