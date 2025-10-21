@@ -109,8 +109,7 @@ function onPointerDown(e) {
   if (!picked) return;
 
   if (focusMode) {
-    // Switching focus to a ring member: do an INSTANT restore to baseline
-    // to avoid overscaled frames, then refocus.
+    // Switching focus to a ring member: instant restore then refocus.
     if (focused && focused.mesh === mesh) return; // no-op if same
     clearFocus({ instant: true });
     focusImage(picked);
@@ -244,6 +243,10 @@ export function clearFocus(opts = {}) {
   const instant = !!opts.instant;
   focusMode = false;
 
+  // unlock focused & resume reshuffle
+  if (focused?.mesh) focused.mesh.userData.lockVisible = false;
+  if (typeof window !== 'undefined') window.__freezeOrbitShuffle = false;
+
   // restore ring members
   ring.forEach(({ mesh }) => instant ? restoreOriginalInstant(mesh) : restoreOriginal(mesh));
   ring.length = 0;
@@ -254,15 +257,17 @@ export function clearFocus(opts = {}) {
     focused = null;
   }
 
-    undimAll();
-    orbitImages.forEach(({ mesh }) => {
-      if (mesh) mesh.renderOrder = ORDER_BG;
-    });
+  undimAll();
+  orbitImages.forEach(({ mesh }) => { if (mesh) mesh.renderOrder = ORDER_BG; });
 }
 
 function focusImage(picked) {
   focusMode = true;
   lastTime = performance.now();
+
+  // lock focused & freeze random reshuffle globally
+  picked.mesh.userData.lockVisible = true;
+  if (typeof window !== 'undefined') window.__freezeOrbitShuffle = true;
 
   focused = picked;
 
@@ -277,7 +282,6 @@ function focusImage(picked) {
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   ringCenter.copy(camera.position).add(dir.multiplyScalar(FOCUS_DISTANCE));
-
 
   for (const o of related) {
     saveOriginal(o.mesh);
@@ -316,8 +320,6 @@ function focusImage(picked) {
     }, 300);
   });
 }
-
-
 
 // ------------------- loop -------------------
 function onKey(e) {
