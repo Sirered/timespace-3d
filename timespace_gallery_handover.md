@@ -40,7 +40,7 @@ import { GLTFLoader }  from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 ### Required environment (.env.local)
 
-This implementation **uses Supabase**. Create a `.env.local` in the project root (Vite will load this; do **not** commit it):
+This implementation **uses Supabase**. Create a `.env.local` in the project root (Vite will load this; do **not** commit it). Please refer to .env.eample:
 
 ```bash
 # .env.local
@@ -57,10 +57,10 @@ VITE_PUBLIC_SUPABASE_BUCKET=your-bucket-name
 
 ### Supabase schema expectations
 
-The project reads from a Supabase table named **`imagerecord`**:
+The project reads from a Supabase table named **`imagerecord`**. Please refer to **imagerecord.schema.sql** for reference:
 
 - `file_name` *(text)* – **full public URL** to the image (e.g., a public bucket URL).
-- `people` *(JSONB)* – metadata for filtering/grouping (populated by your ML pipeline).
+- `people` *(JSONB)* – metadata for filtering/grouping (populated by the ML pipeline).
 
 The Supabase client is created in `supabaseClient.js`.
 
@@ -199,9 +199,9 @@ npm run build
 Add the three variables:
 
 ```bash
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
-VITE_PUBLIC_SUPABASE_BUCKET=...
+cp .env.example .env.local
+# edit .env.local and set:
+# VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_PUBLIC_SUPABASE_BUCKET
 ```
 
 Restart `npm run dev` after changes.
@@ -278,7 +278,45 @@ If you don’t want to use Supabase:
 3. Keep `VITE_PUBLIC_SUPABASE_BUCKET` semantics by mapping it to your storage container/bucket name, or replace its usage with your own env var.
 
 ---
+## Risks & Mitigations
 
+- **Missing/incorrect environment variables** (blank gallery; Supabase client throws).  
+  **Mitigation:** require a `.env.local` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_PUBLIC_SUPABASE_BUCKET`. 
+
+- **Storage permissions / CORS** (images fail to load).  
+  **Mitigation:** use a **public** bucket for read-only content or generate **signed URLs**; document RLS/policies. Verify CORS for your frontend origin(s). Include a smoke test that fetches one known object.
+
+- **Schema drift** (`imagerecord` shape changes; `file_name` not a full URL).  
+  **Mitigation:** keep a minimal schema snippet in docs; validate in `imageLoader.js` (skip invalid rows; log counts and errors).
+
+- **Large/slow images** (mobile jank, slow first paint).  
+  **Mitigation:** store reasonably sized assets; enable CDN on the bucket; use mipmaps and `LinearMipmapLinearFilter`; optionally lazy-hydrate sprites; cap starfield/sprite counts on small screens.
+
+- **Mobile performance & readability** (starfield too dense, GLB too close).  
+  **Mitigation:** apply responsive tunables: reduce `initStarfield({ count, maxSizePx, brightness })` and adjust GLB framing on narrow viewports; optionally expose a `VITE_MOBILE_PROFILE` toggle that loads conservative defaults.
+
+- **GLB/model assumptions** (`logoPath` expects at least 5 meshes to build two paths).  
+  **Mitigation:** retain the circular-orbit fallback when paths cannot be built; log a clear warning; document the minimum GLB structure and how to swap the model in `/public`.
+
+- **WebGL/runtime differences** (headless servers/CI/older browsers).  
+  **Mitigation:** app-side: catch renderer creation errors and display a friendly fallback; test-side: run fast Node/jsdom tests with a fake renderer in CI and a small real-WebGL browser suite locally.
+
+- **Security of anon key** (public client key misuse).  
+  **Mitigation:** never commit `.env.local`; restrict anon role with read-only RLS/policies; prefer signed URLs if assets shouldn’t be public.
+
+- **Rate limits / outages (Supabase/network)**.  
+  **Mitigation:** cache already-loaded textures; handle fetch errors gracefully; include a tiny local placeholder sprite so the scene still renders.
+
+- **Licensing / image provenance**.  
+  **Mitigation:** document ownership/usage; optional watermarking before upload.
+
+- **Accessibility & input** (focus traps, pointer-only).  
+  **Mitigation:** ensure `Esc` exits focus mode; keep post-FX conservative; consider optional keyboard navigation to cycle images.
+
+- **Handover & re-hosting** (stakeholder redeploy on their infra).  
+  **Mitigation:** include per-surface runbooks (EC2 backend, Vercel FE/Admin), `.env.example`, and **smoke scripts** to verify deploys after cloning.
+
+---
 ## Notes & Tips
 
 - The code uses `import.meta.env.*` (Vite). If you switch bundlers, ensure env variables are still injected at build time.
