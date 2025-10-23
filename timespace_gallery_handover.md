@@ -49,8 +49,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 VITE_PUBLIC_SUPABASE_BUCKET=your-bucket-name
 ```
 
-- **Where to find URL & anon key**: Supabase Dashboard → **Connect → App Framework**.  
-  Use the **anon (public) key**.
+- **Where to find URL & anon key**: Supabase Dashboard → **Connect → App Framework**. It will give you strings for the **NEXT_PUBLIC_SUPABASE_URL** and **NEXT_PUBLIC_SUPABASE_ANON_KEY**. These strings are what you use for **VITE_SUPABASE_URL** and **VITE_SUPABASE_ANON_KEY**.
 - **`VITE_PUBLIC_SUPABASE_BUCKET`**: the **Storage bucket** that contains your images (e.g., `timelab-gallery`).  
 - Vite only exposes variables prefixed with `VITE_`. Access them via `import.meta.env.*`.
 - After changing env vars, **restart** your dev server.
@@ -192,6 +191,12 @@ Build for production:
 npm run build
 ```
 
+Run tests
+
+```bash
+npm run test
+```
+
 > The gallery renders full-screen in your browser.
 
 ### 2) Create `.env.local`
@@ -202,6 +207,7 @@ Add the three variables:
 cp .env.example .env.local
 # edit .env.local and set:
 # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_PUBLIC_SUPABASE_BUCKET
+# Where to find these env variables is detailed in the Required Environment section
 ```
 
 Restart `npm run dev` after changes.
@@ -284,7 +290,7 @@ If you don’t want to use Supabase:
   **Mitigation:** require a `.env.local` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_PUBLIC_SUPABASE_BUCKET`. 
 
 - **Storage permissions / CORS** (images fail to load).  
-  **Mitigation:** use a **public** bucket for read-only content or generate **signed URLs**; document RLS/policies. Verify CORS for your frontend origin(s). Include a smoke test that fetches one known object.
+  **Mitigation:** use a **public** bucket for read-only content or generate **signed URLs**; document RLS/policies. Verify CORS for your frontend origin(s).
 
 - **Schema drift** (`imagerecord` shape changes; `file_name` not a full URL).  
   **Mitigation:** keep a minimal schema snippet in docs; validate in `imageLoader.js` (skip invalid rows; log counts and errors).
